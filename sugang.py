@@ -88,7 +88,7 @@ def read_info(drv, cls: str):
             title = tds[TITLE_COL].text.strip()
             prof  = tds[PROF_COL].text.strip()
             return quota, current, title, prof
-    return None, None, None
+    return None, None, None, None
 
 # ---------- 막대그래프 ----------
 
