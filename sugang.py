@@ -206,6 +206,7 @@ def render_courses():
             if st.button("×", key=f"del_{res['subject']}_{res['cls']}"):
                 st.session_state.courses = [c for c in st.session_state.courses if not (c["subject"] == res["subject"] and c["cls"] == res["cls"])]
                 st.experimental_rerun()
+                st.stop()  # 즉시 중단하여 삭제 시 불필요한 과목 조회 방지
         with cols[1]:
             if "error" in res:
                 st.error(f"{res['subject']}-{res['cls']}: {res['error']}")
