@@ -28,7 +28,7 @@ SEM_VALUE = {
 SEM_NAME = {1: "1학기", 2: "여름학기", 3: "2학기", 4: "겨울학기"}
 
 TITLE_COL, CAP_COL, CURR_COL = 6, 13, 14   # 표 인덱스
-PROF_COL = 10                               # 11번째 열(0-based) → 교수명
+PROF_COL = 11                               # 11번째 열(0-based) → 교수명
 TIMEOUT = 10  # Selenium 대기시간(s)
 
 CHROMEDRIVER_CANDIDATES = [
