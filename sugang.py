@@ -2,10 +2,10 @@
 # ---------------------------------------------------------------------
 # sugangonline.py — SNU 수강신청 실시간 모니터 (Streamlit + Selenium, 로컬 chromedriver)
 #   • 과목코드/분반을 여러 개 등록하여 동시에 모니터링
-#   • 과목코드·분반 입력 → "등록" 버튼으로 리스트에 추가, 각 항목 옆 "x" 버튼으로 삭제
+#   • 과목코드·분반 입력 → "등록" 버튼으로 리스트에 추가, 각 항목 옆 "×" 버튼으로 즉시 삭제
 #   • 기본 배열: 경쟁률(담은수/정원) 내림차순, 체크 해제 시 등록 순
-#   • 현재 ≥ 정원: 빨간색, 현재 < 정원: 파란색 막대그래프
-#   • 자동 새로고침 1–10 초
+#   • 과목 삭제나 정렬 토글 시 *이미 조회한 데이터*만 사용해 불필요한 재조회 방지
+#   • 자동 새로고침 1–10 초 (활성화 시에만 주기적으로 재조회)
 #   • 개설연도·학기 입력 제거 ‒ 상수(DEFAULT_YEAR, DEFAULT_SEM) 사용
 #   • chromedriver는 /usr/bin/chromedriver 등 로컬 바이너리 직접 사용
 # ---------------------------------------------------------------------
@@ -103,7 +103,7 @@ def read_info(drv, cls: str):
 
 
 def fetch_course_data(subject: str, cls: str, headless: bool):
-    """webdriver 한 번 열어 단일 과목 데이터를 반환. 오류 시 'error' 키 포함"""
+    """단일 과목 정보를 크롤링하여 딕셔너리 반환. 오류 시 'error' 포함"""
     drv = create_driver(headless)
     try:
         open_and_search(drv, subject)
@@ -149,7 +149,9 @@ st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wi
 
 # 세션 상태 초기화
 if "courses" not in st.session_state:
-    st.session_state.courses = []  # [{subject, cls}]
+    st.session_state.courses = []                    # [{subject, cls}]
+if "course_data" not in st.session_state:
+    st.session_state.course_data = {}                # {(subject, cls): info dict}
 
 st.title("SNU 수강신청 실시간 모니터")
 
@@ -159,13 +161,13 @@ with st.sidebar:
     cls_input     = st.text_input("분반", value="", placeholder="예시: 002")
     add_clicked   = st.button("등록", use_container_width=True)
 
-    auto    = st.checkbox("자동 새로고침", True)
-    interval = st.slider("새로고침(초)", 1, 10, value=2)
-    headless = st.checkbox("Headless 모드", True)
+    auto      = st.checkbox("자동 새로고침", True)
+    interval  = st.slider("새로고침(초)", 1, 10, value=2)
+    headless  = st.checkbox("Headless 모드", True)
 
     sort_by_ratio = st.checkbox("경쟁률 순 배열", True)
 
-# 등록 버튼 처리
+# ---------- 등록 처리 ----------
 if add_clicked:
     subj = subject_input.strip()
     cls  = cls_input.strip()
@@ -175,9 +177,12 @@ if add_clicked:
         st.info("이미 등록된 과목입니다.")
     else:
         st.session_state.courses.append({"subject": subj, "cls": cls})
+        with st.spinner("과목 정보를 불러오는 중..."):
+            data = fetch_course_data(subj, cls, headless)
+        st.session_state.course_data[(subj, cls)] = data
         st.success(f"{subj}-{cls} 등록 완료")
 
-# 자동 새로고침 처리
+# ---------- 자동 새로고침 ----------
 st_autorefresh = getattr(st, "autorefresh", None) or getattr(st, "st_autorefresh", None)
 if auto and st_autorefresh:
     st_autorefresh(interval=int(interval) * 1000, key="auto_refresh")
@@ -190,9 +195,23 @@ def render_courses():
         return
 
     results = []
-    with st.spinner("과목 정보 조회 중..."):
+
+    if auto:
+        # 자동 새로고침이 켜져 있을 때만 모든 과목 재조회
+        with st.spinner("과목 정보 갱신 중..."):
+            for c in st.session_state.courses:
+                key = (c["subject"], c["cls"])
+                data = fetch_course_data(*key, headless)
+                st.session_state.course_data[key] = data
+                results.append(data)
+    else:
+        # 캐시된 데이터 재사용, 없으면 처음 한 번만 조회
         for c in st.session_state.courses:
-            results.append(fetch_course_data(c["subject"], c["cls"], headless))
+            key = (c["subject"], c["cls"])
+            if key not in st.session_state.course_data:
+                with st.spinner("과목 정보를 불러오는 중..."):
+                    st.session_state.course_data[key] = fetch_course_data(*key, headless)
+            results.append(st.session_state.course_data[key])
 
     # 정렬
     if sort_by_ratio:
@@ -201,12 +220,16 @@ def render_courses():
     st.subheader(f"{DEFAULT_YEAR}-{SEM_NAME[DEFAULT_SEM]}")
 
     for res in results:
-        cols = st.columns([1, 9])  # x 버튼, 내용
+        cols = st.columns([1, 9])  # × 버튼, 내용
         with cols[0]:
             if st.button("×", key=f"del_{res['subject']}_{res['cls']}"):
-                st.session_state.courses = [c for c in st.session_state.courses if not (c["subject"] == res["subject"] and c["cls"] == res["cls"])]
+                # courses 목록 및 캐시에서 모두 제거
+                st.session_state.courses = [
+                    c for c in st.session_state.courses if not (c["subject"] == res["subject"] and c["cls"] == res["cls"])
+                ]
+                st.session_state.course_data.pop((res["subject"], res["cls"]), None)
                 st.experimental_rerun()
-                st.stop()  # 즉시 중단하여 삭제 시 불필요한 과목 조회 방지
+                st.stop()  # 삭제 직후 불필요한 코드 실행 방지
         with cols[1]:
             if "error" in res:
                 st.error(f"{res['subject']}-{res['cls']}: {res['error']}")
@@ -216,7 +239,4 @@ def render_courses():
                 pct_display = res["ratio"] * 100
                 st.caption(
                     f"**상태:** {status}  |  **현재 학생 비율:** {pct_display:.0f}%  |  "
-                    f"**{res['cls'] :0>3}분반**, {res['prof']}"
-                )
-
-render_courses()
+                    f"**{res[
