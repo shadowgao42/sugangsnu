@@ -164,7 +164,7 @@ def render():
     pct_display = current / quota * 100 if quota else 0
     st.write(
         f"**상태:** {status}  |   **현재 학생 비율:** {pct_display:.0f}% <br>"
-        f"**{cls.strip():0>3}분반** {prof}"
+        ,f"**{cls.strip():0>3}분반** {prof}"
         unsafe_allow_htmml=True
     )
 
