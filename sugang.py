@@ -1,3 +1,4 @@
+
 import os, re, shutil, streamlit as st
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -102,9 +103,9 @@ def bar(title: str, current: int, quota: int):
     pct = current / quota * 100 if quota else 0
     color = "#e53935" if current >= quota else "#1e88e5"
     st.markdown(
-        f"<div style='display:flex;align-items:center;gap:12px'>"
-        f"<div style='flex:1;position:relative;height:24px;background:#eee;border-radius:8px;overflow:hidden'>"
-        f"<div style='position:absolute;top:0;left:0;bottom:0;width:{pct:.2f}%;background:{color}'></div>"
+        f"<div style='display:flex;align-items:center;gap:12px'>" +
+        f"<div style='flex:1;position:relative;height:24px;background:#eee;border-radius:8px;overflow:hidden'>" +
+        f"<div style='position:absolute;top:0;left:0;bottom:0;width:{pct:.2f}%;background:{color}'></div>" +
         f"</div><span style='font-weight:600;white-space:nowrap'>{title} ({current}/{quota})</span></div>",
         unsafe_allow_html=True,
     )
@@ -118,15 +119,19 @@ if "courses" not in st.session_state:
 if "data" not in st.session_state:
     st.session_state.data = {}
 
-auto_key = "__auto_refresh"
+rerun = getattr(st, "rerun", None) or getattr(st, "experimental_rerun", None)
 
-# 자동 새로고침 기본값 Off
+auto_key = "__auto_refresh"
 auto_default = False
 
 # Title with semester info
 st.title(f"SNU 수강신청 실시간 모니터 ({DEFAULT_YEAR}학년도 {SEM_NAME[DEFAULT_SEM]})")
 
 with st.sidebar:
+    st.header("설정")
+
+    refresh_clicked = st.button("🔄 수동 새로고침", use_container_width=True)
+
     subj = st.text_input("과목코드", placeholder="445.206")
     cls  = st.text_input("분반", placeholder="002")
     add  = st.button("등록", use_container_width=True)
@@ -142,7 +147,7 @@ if add:
     s, c = subj.strip(), cls.strip()
     if not s or not c:
         st.warning("과목코드·분반을 모두 입력하세요.")
-    elif any(x["subject"] == s and x["cls"] == c for x in st.session_state.courses):
+    elif any(x[\"subject\"] == s and x[\"cls\"] == c for x in st.session_state.courses):
         st.info("이미 등록된 과목입니다.")
     else:
         with st.spinner("과목 정보를 불러오는 중..."):
@@ -156,32 +161,26 @@ if add:
             st.session_state.data[(s, c)] = d
             st.success(f"{s}-{c} 등록 완료")
 
-# Auto refresh
+# Auto refresh timer
 ar = getattr(st, "autorefresh", None) or getattr(st, "st_autorefresh", None)
 if auto and ar:
     ar(interval=interval * 1000, key=auto_key)
 
-rerun = getattr(st, "rerun", None) or getattr(st, "experimental_rerun", None)
+need_update = refresh_clicked or auto
 
 # ----------------------------- Render -----------------------------
-
 def render():
     if not st.session_state.courses:
         st.info("사이드바에서 과목을 등록하세요.")
         return
 
     res = []
-    if auto:
-        with st.spinner("과목 정보 갱신 중..."):
-            for c in st.session_state.courses:
-                k = (c["subject"], c["cls"])
-                st.session_state.data[k] = fetch(*k, headless)
-                res.append(st.session_state.data[k])
-    else:
-        for c in st.session_state.courses:
-            k = (c["subject"], c["cls"])
-            if k not in st.session_state.data:
-                st.session_state.data[k] = fetch(*k, headless)
+    for c in st.session_state.courses:
+        k = (c["subject"], c["cls"])
+        if k in st.session_state.data:
+            res.append(st.session_state.data[k])
+        else:
+            st.session_state.data[k] = fetch(*k, headless)
             res.append(st.session_state.data[k])
 
     if sort_ratio:
@@ -200,5 +199,12 @@ def render():
                 bar(r['title'], r['current'], r['quota'])
                 status = "만석" if r['current'] >= r['quota'] else "여석 있음"
                 st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
-
 render()
+
+# After initial render, if we need to update data, fetch new data then rerun
+if need_update:
+    for c in st.session_state.courses:
+        k = (c["subject"], c["cls"])
+        st.session_state.data[k] = fetch(*k, headless)
+    if rerun:
+        rerun()
