@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ---------------------------------------------------------------------
 # app.py — SNU 수강신청 실시간 모니터 (Streamlit + Selenium, 로컬 chromedriver)
-#   • 과목코드/분반 입력 → 과목명과 수강률(%) 막대그래프
+#   • 과목코드/분반 입력 → 과목명과 (담은수/정원) 막대그래프
 #   • 현재 ≥ 정원: 빨간색, 현재 < 정원: 파란색
 #   • 자동 새로고침 1–10 초
 #   • 개설연도·학기 입력 제거 ‒ 상수(DEFAULT_YEAR, DEFAULT_SEM) 사용
@@ -27,7 +27,8 @@ SEM_VALUE = {
 }
 SEM_NAME = {1: "1학기", 2: "여름학기", 3: "2학기", 4: "겨울학기"}
 
-TITLE_COL, PROF_COL, CAP_COL, CURR_COL = 6, 10, 13, 14
+TITLE_COL, CAP_COL, CURR_COL = 6, 13, 14   # 표 인덱스
+PROF_COL = 10                               # 11번째 열(0-based) → 교수명
 TIMEOUT = 10  # Selenium 대기시간(s)
 
 CHROMEDRIVER_CANDIDATES = [
@@ -42,7 +43,9 @@ CHROMEDRIVER_CANDIDATES = [
 def create_driver(headless: bool = True):
     drv_path = next((p for p in CHROMEDRIVER_CANDIDATES if p and os.path.exists(p)), None)
     if not drv_path:
-        raise RuntimeError("chromedriver 경로를 찾지 못했습니다. packages.txt에 chromium-driver가 설치돼 있는지 확인하세요.")
+        raise RuntimeError(
+            "chromedriver 경로를 찾지 못했습니다. packages.txt에 chromium-driver가 설치돼 있는지 확인하세요."
+        )
 
     opts = webdriver.ChromeOptions()
     if headless:
@@ -70,12 +73,16 @@ def open_and_search(drv, subject: str):
         document.getElementById('srchSbjtCd').value    = arguments[2];
         fnInquiry();
         """,
-        str(DEFAULT_YEAR), SEM_VALUE[DEFAULT_SEM], subject.strip(),
+        str(DEFAULT_YEAR),
+        SEM_VALUE[DEFAULT_SEM],
+        subject.strip(),
     )
 
 
 def read_info(drv, cls: str):
-    WebDriverWait(drv, TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.tbl_basic tbody tr")))
+    WebDriverWait(drv, TIMEOUT).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, "table.tbl_basic tbody tr"))
+    )
     for tr in drv.find_elements(By.CSS_SELECTOR, "table.tbl_basic tbody tr"):
         tds = tr.find_elements(By.TAG_NAME, "td")
         if len(tds) <= CURR_COL:
@@ -136,8 +143,9 @@ def render():
     drv = create_driver(headless)
     try:
         with st.spinner("조회 중..."):
+            quota, current, title, prof = None, None, None, None
             open_and_search(drv, subject)
-            quota, current, title = read_info(drv, cls)
+            quota, current, title, prof = read_info(drv, cls)
     except Exception as e:
         st.error(f"오류: {e}")
         drv.quit()
@@ -150,11 +158,13 @@ def render():
         return
 
     st.subheader(f"{DEFAULT_YEAR}-{SEM_NAME[DEFAULT_SEM]}")
-    render_bar(title, current, quota, prof)
+    render_bar(title, current, quota)
 
     status = "만석" if current >= quota else "여석 있음"
-    pct_display = current / quota * 100 if quota else 0
-    st.write(f"**상태:** {status}  |  **담은수/정원:** {current}/{quota}  |  "f"{cls.strip():0>3}분반 {prof}")
+    st.write(
+        f"**상태:** {status}  |  **담은수/정원:** {current}/{quota}  |  "
+        f"{cls.strip():0>3}분반 {prof}"
+    )
 
 
 with placeholder.container():
