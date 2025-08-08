@@ -140,7 +140,7 @@ with st.sidebar:
     cls_in = st.text_input("분반", placeholder="예시: 002")
     add = st.button("등록", use_container_width=True)
 
-    auto = st.checkbox("자동 새로고침", True)
+    auto = st.checkbox("자동 새로고침(과목 등록 시 해제 권장)", True)
     interval = st.slider("새로고침(초)", 1, 10, 2)
     headless = st.checkbox("Headless 모드", True)
 
