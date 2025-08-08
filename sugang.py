@@ -150,7 +150,7 @@ def render():
         return
 
     st.subheader(f"{DEFAULT_YEAR}-{SEM_NAME[DEFAULT_SEM]}")
-    render_bar(title, current, quota)
+    render_bar(title, current, quota, prof)
 
     status = "만석" if current >= quota else "여석 있음"
     pct_display = current / quota * 100 if quota else 0
