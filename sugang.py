@@ -27,7 +27,7 @@ SEM_VALUE = {
 }
 SEM_NAME = {1: "1학기", 2: "여름학기", 3: "2학기", 4: "겨울학기"}
 
-TITLE_COL, CAP_COL, CURR_COL = 6, 13, 14
+TITLE_COL, PROF_COL, CAP_COL, CURR_COL = 6, 10, 13, 14
 TIMEOUT = 10  # Selenium 대기시간(s)
 
 CHROMEDRIVER_CANDIDATES = [
@@ -86,7 +86,8 @@ def read_info(drv, cls: str):
             quota = int(m.group(1)) if m else _parse_int(cap_txt)
             current = _parse_int(tds[CURR_COL].text)
             title = tds[TITLE_COL].text.strip()
-            return quota, current, title
+            prof  = tds[PROF_COL].text.strip()
+            return quota, current, title, prof
     return None, None, None
 
 # ---------- 막대그래프 ----------
@@ -153,7 +154,7 @@ def render():
 
     status = "만석" if current >= quota else "여석 있음"
     pct_display = current / quota * 100 if quota else 0
-    st.write(f"**상태:** {status}  |  **현재 학생 수:** {pct_display:.0f}%")
+    st.write(f"**상태:** {status}  |  **담은수/정원:** {current}/{quota}  |  "f"{cls.strip():0>3}분반 {prof}")
 
 
 with placeholder.container():
