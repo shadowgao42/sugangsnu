@@ -100,7 +100,7 @@ def render_bar(title: str, current: int, quota: int):
           <div style='flex:1;position:relative;height:24px;background:#eee;border-radius:8px;overflow:hidden'>
             <div style='position:absolute;top:0;left:0;bottom:0;width:{pct:.2f}%;background:{color}'></div>
           </div>
-          <span style='font-weight:600;white-space:nowrap'>{title} ({pct:.0f}%)</span>
+          <span style='font-weight:600;white-space:nowrap'>{title} ({current}/{quota})</span>
         </div>
         """,
         unsafe_allow_html=True,
