@@ -162,10 +162,7 @@ if add:
             data = fetch_course_data(subj, cls, headless)
         if "error" in data and "행을 찾지 못했습니다" in data["error"]:
             msg = "과목 정보를 찾지 못했습니다"
-            if have_toast:
-                st.toast(msg, icon="⚠️")
-            else:
-                st.warning(msg)
+            (st.toast(msg, icon="⚠️") if have_toast else st.warning(msg))
         else:
             st.session_state.courses.append({"subject": subj, "cls": cls})
             st.session_state.course_data[(subj, cls)] = data
@@ -196,4 +193,6 @@ def render_courses():
     else:
         for c in st.session_state.courses:
             key = (c["subject"], c["cls"])
-            if key not in st
+            if key not in st.session_state.course_data:
+                with st.spinner("과목 정보를 불러오는 중..."):
+                    st
