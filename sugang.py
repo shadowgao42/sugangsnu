@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # ---------------------------------------------------------------------
 # sugangonline.py — SNU 수강신청 실시간 모니터 (Streamlit + Selenium)
-#   • 여러 과목 동시 모니터링: 과목코드/분반 입력 후 "등록"으로 추가, "×"로 삭제
+#   • 여러 과목 모니터링: "등록"으로 추가, "×"로 삭제
 #   • 기본 배열: 경쟁률 내림차순, 체크 해제 시 등록순
-#   • 자동 새로고침 켜질 때만 재크롤링 → 삭제·정렬만으로는 캐시 사용
-#   • Streamlit 버전별 rerun 함수 호환성 처리
+#   • 초기 조회 실패 시 코스 미추가 + 일시 토스트 알림
+#   • 자동 새로고침 켜질 때만 재크롤링; 그밖엔 캐시 사용
+#   • Streamlit rerun 버전 호환 처리
 # ---------------------------------------------------------------------
 
 import os, re, shutil, streamlit as st
@@ -132,6 +133,9 @@ if "courses" not in st.session_state:
 if "course_data" not in st.session_state:
     st.session_state.course_data = {}  # key: (subj, cls)
 
+# ---- 토스트 사용 여부 ----
+have_toast = hasattr(st, "toast")  # Streamlit ≥1.25
+
 # ---- 사이드바 ----
 st.title("SNU 수강신청 실시간 모니터")
 with st.sidebar:
@@ -140,7 +144,7 @@ with st.sidebar:
     cls_in = st.text_input("분반", placeholder="예시: 002")
     add = st.button("등록", use_container_width=True)
 
-    auto = st.checkbox("자동 새로고침(과목 등록 시 해제 권장)", False)
+    auto = st.checkbox("자동 새로고침", True)
     interval = st.slider("새로고침(초)", 1, 10, 2)
     headless = st.checkbox("Headless 모드", True)
 
@@ -156,9 +160,16 @@ if add:
     else:
         with st.spinner("과목 정보를 불러오는 중..."):
             data = fetch_course_data(subj, cls, headless)
-        st.session_state.courses.append({"subject": subj, "cls": cls})
-        st.session_state.course_data[(subj, cls)] = data
-        st.success(f"{subj}-{cls} 등록 완료")
+        if "error" in data and "행을 찾지 못했습니다" in data["error"]:
+            msg = "과목 정보를 찾지 못했습니다"
+            if have_toast:
+                st.toast(msg, icon="⚠️")
+            else:
+                st.warning(msg)
+        else:
+            st.session_state.courses.append({"subject": subj, "cls": cls})
+            st.session_state.course_data[(subj, cls)] = data
+            st.success(f"{subj}-{cls} 등록 완료")
 
 # ---- 자동 새로고침 ----
 st_autorefresh = getattr(st, "autorefresh", None) or getattr(st, "st_autorefresh", None)
@@ -185,34 +196,4 @@ def render_courses():
     else:
         for c in st.session_state.courses:
             key = (c["subject"], c["cls"])
-            if key not in st.session_state.course_data:
-                with st.spinner("과목 정보를 불러오는 중..."):
-                    st.session_state.course_data[key] = fetch_course_data(*key, headless)
-            results.append(st.session_state.course_data[key])
-
-    if sort_by_ratio:
-        results.sort(key=lambda x: x.get("ratio", 0), reverse=True)
-
-    st.subheader(f"{DEFAULT_YEAR}-{SEM_NAME[DEFAULT_SEM]}")
-
-    for res in results:
-        cols = st.columns([1, 9])
-        del_clicked = cols[0].button("×", key=f"del_{res['subject']}_{res['cls']}")
-        if del_clicked:
-            st.session_state.courses = [c for c in st.session_state.courses if not (c["subject"] == res["subject"] and c["cls"] == res["cls"])]
-            st.session_state.course_data.pop((res["subject"], res["cls"]), None)
-            if _rerun_fn:
-                _rerun_fn()
-            else:
-                st.stop()
-        with cols[1]:
-            if "error" in res:
-                st.error(f"{res['subject']}-{res['cls']}: {res['error']}")
-            else:
-                render_bar(res["title"], res["current"], res["quota"])
-                status = "만석" if res["current"] >= res["quota"] else "여석 있음"
-                st.caption(
-                    f"상태: {status} | 비율: {res['ratio']*100:.0f}% | 분반: {res['cls']:0>3} | 교수: {res['prof']}"
-                )
-
-render_courses()
+            if key not in st
