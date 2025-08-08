@@ -103,8 +103,8 @@ st.title(f"SNU 수강신청 실시간 모니터 ({DEFAULT_YEAR}학년도 {SEM_NA
 
 with st.sidebar:
     st.header("설정")
-    subj = st.text_input("과목코드", placeholder="445.206")
-    cls  = st.text_input("분반", placeholder="002")
+    subj = st.text_input("과목코드", placeholder="예시: 445.206")
+    cls  = st.text_input("분반", placeholder="예시: 002")
     add  = st.button("등록", use_container_width=True)
 
     refresh_clicked = st.button("🔄 수동 새로고침", use_container_width=True)
