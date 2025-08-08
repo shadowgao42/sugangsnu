@@ -153,7 +153,7 @@ if "courses" not in st.session_state:
 if "course_data" not in st.session_state:
     st.session_state.course_data = {}                # {(subject, cls): info dict}
 
-st.title("SNU 수강신청 실시간 모니터")
+st.title("SNU 수강신청 실시간 모니터[공사중]")
 
 with st.sidebar:
     st.subheader("검색 설정")
