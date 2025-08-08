@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # ---------------------------------------------------------------------
 # sugangonline.py — SNU 수강신청 실시간 모니터 (Streamlit + Selenium)
-#   • 여러 과목 모니터링: "등록"으로 추가, "×"로 삭제
+#   • 여러 과목 동시 모니터링: 과목코드/분반 입력 → "등록"으로 추가, "×"로 삭제
 #   • 기본 배열: 경쟁률 내림차순, 체크 해제 시 등록순
-#   • 초기 조회 실패 시 코스 미추가 + 일시 토스트 알림
-#   • 자동 새로고침 켜질 때만 재크롤링; 그밖엔 캐시 사용
-#   • Streamlit rerun 버전 호환 처리
+#   • 자동 새로고침 켜질 때만 재크롤링 → 삭제·정렬만으로는 캐시 사용
+#   • 과목 정보를 못 찾으면 리스트에 추가하지 않고 toast 알림만(자동 사라짐)
+#   • Streamlit 1.25+ toast & rerun 호환 처리
 # ---------------------------------------------------------------------
 
 import os, re, shutil, streamlit as st
@@ -133,9 +133,6 @@ if "courses" not in st.session_state:
 if "course_data" not in st.session_state:
     st.session_state.course_data = {}  # key: (subj, cls)
 
-# ---- 토스트 사용 여부 ----
-have_toast = hasattr(st, "toast")  # Streamlit ≥1.25
-
 # ---- 사이드바 ----
 st.title("SNU 수강신청 실시간 모니터")
 with st.sidebar:
@@ -161,8 +158,14 @@ if add:
         with st.spinner("과목 정보를 불러오는 중..."):
             data = fetch_course_data(subj, cls, headless)
         if "error" in data and "행을 찾지 못했습니다" in data["error"]:
-            msg = "과목 정보를 찾지 못했습니다"
-            (st.toast(msg, icon="⚠️") if have_toast else st.warning(msg))
+            # 찾지 못했을 때 toast만 띄우고 종료
+            toast_fn = getattr(st, "toast", None)
+            if toast_fn:
+                toast_fn("과목 정보를 찾지 못했습니다.", icon="⚠️")
+            else:
+                st.warning("과목 정보를 찾지 못했습니다.")
+        elif "error" in data:
+            st.error(f"{subj}-{cls}: {data['error']}")
         else:
             st.session_state.courses.append({"subject": subj, "cls": cls})
             st.session_state.course_data[(subj, cls)] = data
@@ -195,4 +198,23 @@ def render_courses():
             key = (c["subject"], c["cls"])
             if key not in st.session_state.course_data:
                 with st.spinner("과목 정보를 불러오는 중..."):
-                    st
+                    st.session_state.course_data[key] = fetch_course_data(*key, headless)
+            results.append(st.session_state.course_data[key])
+
+    if sort_by_ratio:
+        results.sort(key=lambda x: x.get("ratio", 0), reverse=True)
+
+    st.subheader(f"{DEFAULT_YEAR}-{SEM_NAME[DEFAULT_SEM]}")
+
+    for res in results:
+        cols = st.columns([1, 9])
+        del_clicked = cols[0].button("×", key=f"del_{res['subject']}_{res['cls']}")
+        if del_clicked:
+            st.session_state.courses = [c for c in st.session_state.courses if not (c["subject"] == res["subject"] and c["cls"] == res["cls"])]
+            st.session_state.course_data.pop((res["subject"], res["cls"]), None)
+            if _rerun_fn:
+                _rerun_fn()
+            else:
+                st.stop()
+        with cols[1]:
+            if "
