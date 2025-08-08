@@ -4,9 +4,9 @@
 #   • 과목코드/분반을 여러 개 등록하여 동시에 모니터링
 #   • 과목코드·분반 입력 → "등록" 버튼으로 리스트에 추가, 각 항목 옆 "×" 버튼으로 즉시 삭제
 #   • 기본 배열: 경쟁률(담은수/정원) 내림차순, 체크 해제 시 등록 순
-#   • 과목 삭제나 정렬 토글 시 *이미 조회한 데이터*만 사용해 불필요한 재조회 방지
-#   • 자동 새로고침 1–10 초 (활성화 시에만 주기적으로 재조회)
-#   • 개설연도·학기 입력 제거 ‒ 상수(DEFAULT_YEAR, DEFAULT_SEM) 사용
+#   • 과목 삭제·정렬 토글 시에는 *이미 조회한 데이터*만 사용해 불필요한 재조회 방지
+#   • 자동 새로고침 1–10 초 (활성화 시에만 주기적으로 재조회)
+#   • Streamlit 버전 차이를 고려해 rerun 함수(fallback)를 사용
 #   • chromedriver는 /usr/bin/chromedriver 등 로컬 바이너리 직접 사용
 # ---------------------------------------------------------------------
 
@@ -30,7 +30,7 @@ SEM_VALUE = {
 SEM_NAME = {1: "1학기", 2: "여름학기", 3: "2학기", 4: "겨울학기"}
 
 TITLE_COL, CAP_COL, CURR_COL = 6, 13, 14   # 표 인덱스
-PROF_COL = 11                               # 11번째 열(0‑based) → 교수명
+PROF_COL = 11                               # 11번째 열(0-based) → 교수명
 TIMEOUT = 10  # Selenium 대기시간(s)
 
 CHROMEDRIVER_CANDIDATES = [
@@ -191,55 +191,4 @@ if auto and st_autorefresh:
 
 def render_courses():
     if not st.session_state.courses:
-        st.info("사이드바에서 과목코드와 분반을 입력 후 '등록'을 눌러 과목을 추가하세요.")
-        return
-
-    results = []
-
-    if auto:
-        # 자동 새로고침이 켜져 있을 때만 모든 과목 재조회
-        with st.spinner("과목 정보 갱신 중..."):
-            for c in st.session_state.courses:
-                key = (c["subject"], c["cls"])
-                data = fetch_course_data(*key, headless)
-                st.session_state.course_data[key] = data
-                results.append(data)
-    else:
-        # 캐시된 데이터 재사용, 없으면 처음 한 번만 조회
-        for c in st.session_state.courses:
-            key = (c["subject"], c["cls"])
-            if key not in st.session_state.course_data:
-                with st.spinner("과목 정보를 불러오는 중..."):
-                    st.session_state.course_data[key] = fetch_course_data(*key, headless)
-            results.append(st.session_state.course_data[key])
-
-    # 정렬
-    if sort_by_ratio:
-        results.sort(key=lambda x: x.get("ratio", 0), reverse=True)
-
-    st.subheader(f"{DEFAULT_YEAR}-{SEM_NAME[DEFAULT_SEM]}")
-
-    for res in results:
-        cols = st.columns([1, 9])  # × 버튼, 내용
-        with cols[0]:
-            if st.button("×", key=f"del_{res['subject']}_{res['cls']}"):
-                # courses 목록 및 캐시에서 모두 제거
-                st.session_state.courses = [
-                    c for c in st.session_state.courses if not (c["subject"] == res["subject"] and c["cls"] == res["cls"])
-                ]
-                st.session_state.course_data.pop((res["subject"], res["cls"]), None)
-                st.experimental_rerun()
-                st.stop()  # 삭제 직후 불필요한 코드 실행 방지
-        with cols[1]:
-            if "error" in res:
-                st.error(f"{res['subject']}-{res['cls']}: {res['error']}")
-            else:
-                render_bar(res["title"], res["current"], res["quota"])
-                status = "만석" if res["current"] >= res["quota"] else "여석 있음"
-                pct_display = res["ratio"] * 100
-                st.caption(
-                    f"**상태:** {status}  |  **현재 학생 비율:** {pct_display:.0f}%  |  "
-                    f"**{res['cls'] :0>3}분반**, {res['prof']}"
-                )
-
-render_courses()
+        st
