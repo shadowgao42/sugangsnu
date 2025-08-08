@@ -7,7 +7,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 DEFAULT_YEAR = 2025
-DEFAULT_SEM  = 3  # 3 → 2학기
+DEFAULT_SEM = 3  # 3 → 2학기
 SEM_VALUE = {1: "U000200001U000300001", 2: "U000200001U000300002", 3: "U000200002U000300001", 4: "U000200002U000300002"}
 SEM_NAME  = {1: "1학기", 2: "여름학기", 3: "2학기", 4: "겨울학기"}
 TITLE_COL, CAP_COL, CURR_COL, PROF_COL = 6, 13, 14, 11
@@ -20,7 +20,6 @@ CHROMEDRIVER = [
 ]
 
 # ----------------------------- Selenium helpers -----------------------------
-
 def driver(headless=True):
     path = next((p for p in CHROMEDRIVER if p and os.path.exists(p)), None)
     if not path:
@@ -98,20 +97,19 @@ def fetch(subject: str, cls: str, headless: bool):
     }
 
 # ----------------------------- UI helpers -----------------------------
-
 def bar(title: str, current: int, quota: int):
     pct = current / quota * 100 if quota else 0
     color = "#e53935" if current >= quota else "#1e88e5"
     st.markdown(
-        f"<div style='display:flex;align-items:center;gap:12px'>" +
-        f"<div style='flex:1;position:relative;height:24px;background:#eee;border-radius:8px;overflow:hidden'>" +
+        "<div style='display:flex;align-items:center;gap:12px'>" +
+        "<div style='flex:1;position:relative;height:24px;background:#eee;border-radius:8px;overflow:hidden'>" +
         f"<div style='position:absolute;top:0;left:0;bottom:0;width:{pct:.2f}%;background:{color}'></div>" +
-        f"</div><span style='font-weight:600;white-space:nowrap'>{title} ({current}/{quota})</span></div>",
+        "</div><span style='font-weight:600;white-space:nowrap'>" +
+        f"{title} ({current}/{quota})</span></div>",
         unsafe_allow_html=True,
     )
 
 # ----------------------------- Streamlit UI -----------------------------
-
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
 
 if "courses" not in st.session_state:
@@ -142,12 +140,11 @@ with st.sidebar:
     sort_ratio = st.checkbox("경쟁률 순 배열", True)
 
 # ----------------------------- Add course -----------------------------
-
 if add:
     s, c = subj.strip(), cls.strip()
     if not s or not c:
         st.warning("과목코드·분반을 모두 입력하세요.")
-    elif any(x[\"subject\"] == s and x[\"cls\"] == c for x in st.session_state.courses):
+    elif any(x["subject"] == s and x["cls"] == c for x in st.session_state.courses):
         st.info("이미 등록된 과목입니다.")
     else:
         with st.spinner("과목 정보를 불러오는 중..."):
@@ -199,6 +196,7 @@ def render():
                 bar(r['title'], r['current'], r['quota'])
                 status = "만석" if r['current'] >= r['quota'] else "여석 있음"
                 st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
+
 render()
 
 # After initial render, if we need to update data, fetch new data then rerun
