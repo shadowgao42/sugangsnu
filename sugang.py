@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 # ---------------------------------------------------------------------
-# app.py — SNU 수강신청 실시간 모니터 (Streamlit + Selenium, 로컬 chromedriver)
-#   • 과목코드/분반 입력 → 과목명과 (담은수/정원) 막대그래프
-#   • 현재 ≥ 정원: 빨간색, 현재 < 정원: 파란색
-#   • 자동 새로고침 1–10 초
+# sugangonline.py — SNU 수강신청 실시간 모니터 (Streamlit + Selenium, 로컬 chromedriver)
+#   • 과목코드/분반을 여러 개 등록하여 동시에 모니터링
+#   • 과목코드·분반 입력 → "등록" 버튼으로 리스트에 추가, 각 항목 옆 "x" 버튼으로 삭제
+#   • 기본 배열: 경쟁률(담은수/정원) 내림차순, 체크 해제 시 등록 순
+#   • 현재 ≥ 정원: 빨간색, 현재 < 정원: 파란색 막대그래프
+#   • 자동 새로고침 1–10 초
 #   • 개설연도·학기 입력 제거 ‒ 상수(DEFAULT_YEAR, DEFAULT_SEM) 사용
 #   • chromedriver는 /usr/bin/chromedriver 등 로컬 바이너리 직접 사용
 # ---------------------------------------------------------------------
 
-import os, re, streamlit as st, shutil
+import os, re, shutil, streamlit as st
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -56,7 +58,7 @@ def create_driver(headless: bool = True):
 
     return webdriver.Chrome(service=Service(drv_path), options=opts)
 
-# ---------- 페이지 조작 ----------
+# ---------- 유틸 ----------
 
 def _parse_int(txt: str) -> int:
     m = re.search(r"\d+", txt.replace(",", ""))
@@ -64,6 +66,7 @@ def _parse_int(txt: str) -> int:
 
 
 def open_and_search(drv, subject: str):
+    """SNU 수강신청 검색 페이지를 열고 과목코드로 조회"""
     drv.get("https://shine.snu.ac.kr/uni/sugang/cc/cc100.action")
     WebDriverWait(drv, TIMEOUT).until(EC.presence_of_element_located((By.ID, "srchOpenSchyy")))
     drv.execute_script(
@@ -80,6 +83,7 @@ def open_and_search(drv, subject: str):
 
 
 def read_info(drv, cls: str):
+    """조회 결과 테이블에서 분반(cls) 행을 찾아 정보 추출"""
     WebDriverWait(drv, TIMEOUT).until(
         EC.presence_of_element_located((By.CSS_SELECTOR, "table.tbl_basic tbody tr"))
     )
@@ -97,7 +101,32 @@ def read_info(drv, cls: str):
             return quota, current, title, prof
     return None, None, None, None
 
-# ---------- 막대그래프 ----------
+
+def fetch_course_data(subject: str, cls: str, headless: bool):
+    """webdriver 한 번 열어 단일 과목 데이터를 반환. 오류 시 'error' 키 포함"""
+    drv = create_driver(headless)
+    try:
+        open_and_search(drv, subject)
+        quota, current, title, prof = read_info(drv, cls)
+    except Exception as e:
+        return {"subject": subject, "cls": cls, "error": str(e)}
+    finally:
+        drv.quit()
+
+    if quota is None:
+        return {"subject": subject, "cls": cls, "error": "행을 찾지 못했습니다."}
+
+    return {
+        "subject": subject,
+        "cls": cls,
+        "quota": quota,
+        "current": current,
+        "title": title,
+        "prof": prof,
+        "ratio": (current / quota) if quota else 0,
+    }
+
+# ---------- 그래프 ----------
 
 def render_bar(title: str, current: int, quota: int):
     pct = (current / quota * 100) if quota else 0
@@ -117,57 +146,76 @@ def render_bar(title: str, current: int, quota: int):
 # ---------- Streamlit UI ----------
 
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
+
+# 세션 상태 초기화
+if "courses" not in st.session_state:
+    st.session_state.courses = []  # [{subject, cls}]
+
 st.title("SNU 수강신청 실시간 모니터")
 
 with st.sidebar:
     st.subheader("검색 설정")
-    subject = st.text_input("과목코드", value="", placeholder="예시: 445.206")
-    cls     = st.text_input("분반", value="", placeholder="예시: 002")
+    subject_input = st.text_input("과목코드", value="", placeholder="예시: 445.206")
+    cls_input     = st.text_input("분반", value="", placeholder="예시: 002")
+    add_clicked   = st.button("등록", use_container_width=True)
+
     auto    = st.checkbox("자동 새로고침", True)
     interval = st.slider("새로고침(초)", 1, 10, value=2)
     headless = st.checkbox("Headless 모드", True)
 
-# 자동 새로고침
+    sort_by_ratio = st.checkbox("경쟁률 순 배열", True)
+
+# 등록 버튼 처리
+if add_clicked:
+    subj = subject_input.strip()
+    cls  = cls_input.strip()
+    if not subj or not cls:
+        st.warning("과목코드·분반을 모두 입력하세요.")
+    elif any(c["subject"] == subj and c["cls"] == cls for c in st.session_state.courses):
+        st.info("이미 등록된 과목입니다.")
+    else:
+        st.session_state.courses.append({"subject": subj, "cls": cls})
+        st.success(f"{subj}-{cls} 등록 완료")
+
+# 자동 새로고침 처리
 st_autorefresh = getattr(st, "autorefresh", None) or getattr(st, "st_autorefresh", None)
 if auto and st_autorefresh:
     st_autorefresh(interval=int(interval) * 1000, key="auto_refresh")
 
-placeholder = st.empty()
+# ---------- 메인 렌더 ----------
 
-
-def render():
-    if not subject.strip() or not cls.strip():
-        st.info("과목코드·분반을 입력하세요.")
+def render_courses():
+    if not st.session_state.courses:
+        st.info("사이드바에서 과목코드와 분반을 입력 후 '등록'을 눌러 과목을 추가하세요.")
         return
 
-    drv = create_driver(headless)
-    try:
-        with st.spinner("조회 중..."):
-            quota, current, title, prof = None, None, None, None
-            open_and_search(drv, subject)
-            quota, current, title, prof = read_info(drv, cls)
-    except Exception as e:
-        st.error(f"오류: {e}")
-        drv.quit()
-        return
-    finally:
-        drv.quit()
+    results = []
+    with st.spinner("과목 정보 조회 중..."):
+        for c in st.session_state.courses:
+            results.append(fetch_course_data(c["subject"], c["cls"], headless))
 
-    if quota is None:
-        st.error("행을 찾지 못했습니다. 입력을 확인하세요.")
-        return
+    # 정렬
+    if sort_by_ratio:
+        results.sort(key=lambda x: x.get("ratio", 0), reverse=True)
 
     st.subheader(f"{DEFAULT_YEAR}-{SEM_NAME[DEFAULT_SEM]}")
-    render_bar(title, current, quota)
 
-    status = "만석" if current >= quota else "여석 있음"
-    pct_display = current / quota * 100 if quota else 0
-    st.write(
-        f"**상태:** {status}  |   **현재 학생 비율:** {pct_display:.0f}% <br>" 
-        f"**{cls.strip():0>3}분반**, {prof}",
-    unsafe_allow_html=True
-)
+    for res in results:
+        cols = st.columns([1, 9])  # x 버튼, 내용
+        with cols[0]:
+            if st.button("×", key=f"del_{res['subject']}_{res['cls']}"):
+                st.session_state.courses = [c for c in st.session_state.courses if not (c["subject"] == res["subject"] and c["cls"] == res["cls"])]
+                st.experimental_rerun()
+        with cols[1]:
+            if "error" in res:
+                st.error(f"{res['subject']}-{res['cls']}: {res['error']}")
+            else:
+                render_bar(res["title"], res["current"], res["quota"])
+                status = "만석" if res["current"] >= res["quota"] else "여석 있음"
+                pct_display = res["ratio"] * 100
+                st.caption(
+                    f"**상태:** {status}  |  **현재 학생 비율:** {pct_display:.0f}%  |  "
+                    f"**{res['cls'] :0>3}분반**, {res['prof']}"
+                )
 
-
-with placeholder.container():
-    render()
+render_courses()
