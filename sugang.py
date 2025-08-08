@@ -145,7 +145,7 @@ def render_bar(title: str, current: int, quota: int):
 
 # ---------- Streamlit UI ----------
 
-st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
+st.set_page_config(page_title="SNU 수강신청 실시간 모니터[공사중]", layout="wide")
 
 # 세션 상태 초기화
 if "courses" not in st.session_state:
