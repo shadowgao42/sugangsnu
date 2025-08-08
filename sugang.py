@@ -161,8 +161,9 @@ def render():
     render_bar(title, current, quota)
 
     status = "만석" if current >= quota else "여석 있음"
+    pct_display = current / quota * 100 if quota else 0
     st.write(
-        f"**상태:** {status}  |  **담은수/정원:** {current}/{quota}  |  "
+        f"**상태:** {status}  |   **현재 수강률:** {pct_display:.0f}%  |  "
         f"{cls.strip():0>3}분반 {prof}"
     )
 
