@@ -91,7 +91,6 @@ st.set_page_config(page_title="SNU 수강신청 실시간 모니터",layout="wid
 
 if "courses" not in st.session_state: st.session_state.courses=[]
 if "data" not in st.session_state: st.session_state.data={}
-if "pending" not in st.session_state: st.session_state.pending=[]  # list of (subj,cls) awaiting fetch
 
 rerun=getattr(st,"rerun",None) or getattr(st,"experimental_rerun",None)
 auto_key="__auto_refresh"
@@ -111,7 +110,6 @@ with st.sidebar:
     headless=st.checkbox("Headless 모드",True)
     sort_ratio=st.checkbox("경쟁률 순 배열",True)
 
-# Add course without fetching immediately
 if add:
     s,c=subj.strip(),cls.strip()
     if not s or not c:
@@ -119,16 +117,22 @@ if add:
     elif any(x["subject"]==s and x["cls"]==c for x in st.session_state.courses):
         st.info("이미 등록된 과목입니다.")
     else:
-        st.session_state.courses.append({"subject":s,"cls":c})
-        st.session_state.pending.append((s,c))  # mark for async fetch
-        st.success(f"{s}-{c} 등록 (데이터 로드 중...)")
+        with st.spinner("과목 정보를 불러오는 중..."):
+            d=fetch(s,c,headless)
+        if "error" in d and "행을 찾지 못했습니다" in d["error"]:
+            (getattr(st,"toast",None) or st.warning)("과목 정보를 찾지 못했습니다.")
+        elif "error" in d:
+            st.error(f"{s}-{c}: {d['error']}")
+        else:
+            st.session_state.courses.append({"subject":s,"cls":c})
+            st.session_state.data[(s,c)]=d
+            st.success(f"{s}-{c} 등록 완료")
 
-# schedule autorefresh
 ar=getattr(st,"autorefresh",None) or getattr(st,"st_autorefresh",None)
 if auto and ar:
     ar(interval=interval*1000,key=auto_key)
 
-need_update = refresh_clicked or auto or bool(st.session_state.pending)
+need_update = refresh_clicked or auto
 
 def render():
     if not st.session_state.courses:
@@ -140,8 +144,8 @@ def render():
         if k in st.session_state.data:
             res.append(st.session_state.data[k])
         else:
-            # placeholder for loading
-            res.append({"subject":k[0],"cls":k[1],"error":"데이터 로딩 중..."})
+            st.session_state.data[k]=fetch(*k,headless)
+            res.append(st.session_state.data[k])
     if sort_ratio:
         res.sort(key=lambda x:x.get("ratio",0),reverse=True)
     for r in res:
@@ -149,24 +153,18 @@ def render():
         if col[0].button("×",key=f"del_{r['subject']}_{r['cls']}"):
             st.session_state.courses=[c for c in st.session_state.courses if not (c['subject']==r['subject'] and c['cls']==r['cls'])]
             st.session_state.data.pop((r['subject'],r['cls']),None)
-            if (r['subject'],r['cls']) in st.session_state.pending:
-                st.session_state.pending.remove((r['subject'],r['cls']))
             (rerun or st.stop)()
         with col[1]:
-            if "error" in r and r["error"]=="데이터 로딩 중...":
-                st.info(f"{r['subject']}-{r['cls']}: 데이터 로딩 중...")
-            elif "error" in r:
+            if "error" in r:
                 st.error(f"{r['subject']}-{r['cls']}: {r['error']}")
             else:
                 bar(r['title'],r['current'],r['quota'])
-                status="만석" if r['current']>=r['quota'] else "여석 있음"
+                status = "만석" if r['current']>=r['quota'] else "여석 있음"
                 st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
 render()
 
-# fetch pending or refresh all
 if need_update:
-    targets = st.session_state.pending if st.session_state.pending else [(c["subject"],c["cls"]) for c in st.session_state.courses]
-    for subj,cls in targets:
-        st.session_state.data[(subj,cls)] = fetch(subj,cls,headless)
-    st.session_state.pending.clear()
+    for c in st.session_state.courses:
+        k=(c["subject"],c["cls"])
+        st.session_state.data[k]=fetch(*k,headless)
     if rerun: rerun()
