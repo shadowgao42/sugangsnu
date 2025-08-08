@@ -38,14 +38,12 @@ def _int(x:str)->int:
 def open_search(drv,subject:str):
     drv.get("https://shine.snu.ac.kr/uni/sugang/cc/cc100.action")
     WebDriverWait(drv,TIMEOUT).until(EC.presence_of_element_located((By.ID,"srchOpenSchyy")))
-    drv.execute_script(
-        """
+    drv.execute_script("""
         document.getElementById('srchOpenSchyy').value = arguments[0];
         document.getElementById('srchOpenShtm').value  = arguments[1];
         document.getElementById('srchSbjtCd').value    = arguments[2];
         fnInquiry();
-        """,str(DEFAULT_YEAR),SEM_VALUE[DEFAULT_SEM],subject.strip()
-    )
+    """,str(DEFAULT_YEAR),SEM_VALUE[DEFAULT_SEM],subject.strip())
 
 def read_info(drv,cls:str):
     WebDriverWait(drv,TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR,"table.tbl_basic tbody tr")))
@@ -89,8 +87,8 @@ def bar(title:str,current:int,quota:int):
 
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터",layout="wide")
 
-if "courses" not in st.session_state: st.session_state.courses=[]
-if "data" not in st.session_state: st.session_state.data={}
+for key,default in [("courses",[]),("data",{}),("pending",[]) ]:
+    if key not in st.session_state: st.session_state[key]=default
 
 rerun=getattr(st,"rerun",None) or getattr(st,"experimental_rerun",None)
 auto_key="__auto_refresh"
@@ -117,35 +115,21 @@ if add:
     elif any(x["subject"]==s and x["cls"]==c for x in st.session_state.courses):
         st.info("이미 등록된 과목입니다.")
     else:
-        with st.spinner("과목 정보를 불러오는 중..."):
-            d=fetch(s,c,headless)
-        if "error" in d and "행을 찾지 못했습니다" in d["error"]:
-            (getattr(st,"toast",None) or st.warning)("과목 정보를 찾지 못했습니다.")
-        elif "error" in d:
-            st.error(f"{s}-{c}: {d['error']}")
-        else:
-            st.session_state.courses.append({"subject":s,"cls":c})
-            st.session_state.data[(s,c)]=d
-            st.success(f"{s}-{c} 등록 완료")
+        st.session_state.courses.append({"subject":s,"cls":c})
+        st.session_state.pending.append((s,c))
+        st.success(f"{s}-{c} 등록 완료")
 
 ar=getattr(st,"autorefresh",None) or getattr(st,"st_autorefresh",None)
 if auto and ar:
     ar(interval=interval*1000,key=auto_key)
 
-need_update = refresh_clicked or auto
+need_update = bool(st.session_state.pending) or refresh_clicked or auto
 
 def render():
     if not st.session_state.courses:
         st.info("사이드바에서 과목을 등록하세요.")
         return
-    res=[]
-    for c in st.session_state.courses:
-        k=(c["subject"],c["cls"])
-        if k in st.session_state.data:
-            res.append(st.session_state.data[k])
-        else:
-            st.session_state.data[k]=fetch(*k,headless)
-            res.append(st.session_state.data[k])
+    res=[st.session_state.data.get((c["subject"],c["cls"])) for c in st.session_state.courses if (c["subject"],c["cls"]) in st.session_state.data]
     if sort_ratio:
         res.sort(key=lambda x:x.get("ratio",0),reverse=True)
     for r in res:
@@ -159,12 +143,17 @@ def render():
                 st.error(f"{r['subject']}-{r['cls']}: {r['error']}")
             else:
                 bar(r['title'],r['current'],r['quota'])
-                status = "만석" if r['current']>=r['quota'] else "여석 있음"
+                status="만석" if r['current']>=r['quota'] else "여석 있음"
                 st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
 render()
 
 if need_update:
-    for c in st.session_state.courses:
-        k=(c["subject"],c["cls"])
-        st.session_state.data[k]=fetch(*k,headless)
-    if rerun: rerun()
+    while st.session_state.pending:
+        subj_,cls_=st.session_state.pending.pop(0)
+        st.session_state.data[(subj_,cls_)]=fetch(subj_,cls_,headless)
+    if refresh_clicked or auto:
+        for c in st.session_state.courses:
+            k=(c['subject'],c['cls'])
+            st.session_state.data[k]=fetch(*k,headless)
+    if rerun:
+        rerun()
