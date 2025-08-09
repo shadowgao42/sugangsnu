@@ -11,7 +11,7 @@ SEM_VALUE = {1: "U000200001U000300001", 2: "U000200001U000300002", 3: "U00020000
 SEM_NAME  = {1: "1학기", 2: "여름학기", 3: "2학기", 4: "겨울학기"}
 TITLE_COL, CAP_COL, CURR_COL, PROF_COL = 6, 13, 14, 11
 TIMEOUT = 10
-MAX_PAGES_TO_TRY = 20  # 안전장치: 최대 20페이지까지 시도
+MAX_PAGES_TO_TRY = 100  # 필요한 만큼 계속 탐색 (상한: 100페이지)
 
 CHROMEDRIVER = [
     "/usr/bin/chromedriver",
@@ -52,7 +52,7 @@ def _scan_current_page(drv, cls:str):
     WebDriverWait(drv,TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR,"table.tbl_basic tbody tr")))
     for tr in drv.find_elements(By.CSS_SELECTOR,"table.tbl_basic tbody tr"):
         tds = tr.find_elements(By.TAG_NAME,"td")
-        if len(tds)<=CURR_COL: 
+        if len(tds)<=CURR_COL:
             continue
         if any(td.text.strip()==cls for td in tds):
             cap = tds[CAP_COL].text
@@ -64,19 +64,49 @@ def _scan_current_page(drv, cls:str):
             return quota,current,title,prof
     return None
 
+def _has_page(drv, page:int)->bool:
+    # 페이지 링크가 존재하는지 href를 통해 확인 (fnGotoPage(2) 또는 fnGotoPage('2'))
+    return drv.execute_script(
+        """
+        const p = String(arguments[0]);
+        const targets = [
+            "fnGotoPage(" + p + ")",
+            "fnGotoPage('" + p + "')",
+            'fnGotoPage("' + p + '")'
+        ];
+        return Array.from(document.querySelectorAll('a[href]')).some(a => {
+            const h = a.getAttribute('href') || '';
+            return targets.some(t => h.includes(t));
+        });
+        """, str(page)
+    ) or False
+
 def _goto_page(drv, page:int):
-    # 페이지 전환: 기존 첫 행을 기억해두고 변경될 때까지 대기
+    # tbody 내용 스냅샷
     try:
         tbody = WebDriverWait(drv, TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.tbl_basic tbody")))
         old_html = tbody.get_attribute("innerHTML")
     except Exception:
         old_html = None
-    # 페이지 이동 (예: javascript:fnGotoPage(2);)
-    drv.execute_script("fnGotoPage(arguments[0]);", page)
-    # DOM 업데이트 대기
+
+    # 1) 우선 함수 직접 호출
+    try:
+        drv.execute_script("fnGotoPage(arguments[0]);", str(page))
+    except Exception:
+        # 2) 링크 클릭으로 폴백
+        link = None
+        try:
+            link = drv.find_element(By.XPATH, f"//a[contains(@href, "fnGotoPage({page})") or contains(@href, "fnGotoPage('{page}')") or contains(@href, 'fnGotoPage("{page}")')]")
+        except Exception:
+            pass
+        if link:
+            link.click()
+        else:
+            raise RuntimeError("해당 페이지 링크를 찾지 못했습니다.")
+
+    # DOM 변경 대기
     WebDriverWait(drv, TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR,"table.tbl_basic tbody tr")))
     if old_html is not None:
-        # 내용이 바뀔 때까지 잠깐 대기 (최대 TIMEOUT초)
         t0 = time.time()
         while time.time() - t0 < TIMEOUT:
             try:
@@ -88,21 +118,22 @@ def _goto_page(drv, page:int):
             time.sleep(0.1)
 
 def read_info(drv, cls:str):
-    # 1페이지 검색
+    # 현재 페이지부터 스캔
     found = _scan_current_page(drv, cls)
     if found:
         return found
 
-    # 페이지네이션: 2페이지부터 MAX_PAGES_TO_TRY까지 순차 탐색
-    for p in range(2, MAX_PAGES_TO_TRY + 1):
+    # 2페이지부터 존재할 때까지 계속 이동하며 스캔
+    page = 2
+    while page <= MAX_PAGES_TO_TRY and _has_page(drv, page):
         try:
-            _goto_page(drv, p)
+            _goto_page(drv, page)
         except Exception:
-            # 더 이상 페이지가 없거나 이동 실패 시 중단
             break
         found = _scan_current_page(drv, cls)
         if found:
             return found
+        page += 1
     return None, None, None, None
 
 def fetch(subj:str, cls:str, headless:bool):
@@ -119,26 +150,25 @@ def fetch(subj:str, cls:str, headless:bool):
     return {"subject":subj,"cls":cls,"quota":quota,"current":current,"title":title,"prof":prof,"ratio":current/quota if quota else 0}
 
 # --- UI 부분 ---
-# 1) 고정폭(반응형) 막대: 제목 길이에 무관하게 모든 항목 동일 너비를 사용
-#   - clamp(360px, 48vw, 640px)로 화면 너비에 맞춰 적당히 반응
-#   - 제목은 우측으로 따로 배치하여 잘리지 않도록 함
+# (1) 막대 길이 고정: 모든 항목 동일 길이(예: 520px). 제목은 오른쪽에 별도 박스로 전체 표시.
+FIXED_BAR_PX = 520  # 필요 시 사용자 조정 가능
+
 def bar(t:str,curr:int,quota:int):
     pct = curr/quota*100 if quota else 0
+    width_px = FIXED_BAR_PX
     color = "#e53935" if curr>=quota else "#1e88e5"
-    st.markdown(
-        """
-        <div style='display:flex;align-items:center;gap:12px; width:100%;'>
-            <div style='width:clamp(360px, 48vw, 640px); position:relative; height:24px; background:#eee; border-radius:8px; overflow:hidden; flex:0 0 auto;'>
-                <div style='position:absolute; top:0; left:0; bottom:0; width:{pct:.2f}%; background:{color};'></div>
-                <div style='position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:13px;'>
-                    {curr}/{quota}
-                </div>
+    html = f"""
+    <div style='display:flex;align-items:center;gap:12px;width:100%;'>
+        <div style='width:{width_px}px;position:relative;height:24px;background:#eee;border-radius:8px;overflow:hidden;flex:0 0 auto;'>
+            <div style='position:absolute;top:0;left:0;bottom:0;width:{pct:.2f}%;background:{color};'></div>
+            <div style='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;'>
+                {curr}/{quota}
             </div>
-            <div style='flex:1 1 auto; min-width:120px; font-weight:600; overflow-wrap:anywhere;'>{t}</div>
         </div>
-        """.format(pct=pct, color=color, curr=curr, quota=quota, t=t),
-        unsafe_allow_html=True
-    )
+        <div style='flex:1 1 auto;min-width:140px;font-weight:600;word-break:keep-all;overflow-wrap:anywhere;'>{t}</div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
 
