@@ -250,33 +250,43 @@ def render():
         safekey=_safe_id(r['subject'], r['cls'])
         fav_on = k in st.session_state.favorites
         with col[0]:
-            box=f"box_{safekey}"
-            st.markdown(f"<div id='{box}' style='position:relative;height:36px'></div>", unsafe_allow_html=True)
-            del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
-            fav_clicked = st.button("★" if fav_on else "☆", key=f"fav_{safekey}", help="즐겨찾기")
+            # segmented control keeps items side-by-side on mobile
+            choice = st.segmented_control(
+                label="", options=["×", "★" if fav_on else "☆"],
+                selection=None, key=f"seg_{safekey}"
+            )
             st.markdown(f"""
 <style>
-#{box} + div.stButton > button {{
-  width:36px !important; height:36px !important; border-radius:8px !important; padding:0 !important;
-  color:#111 !important; background:#fff !important; border:1px solid #ccc !important;
+div[data-testid="stSegmentedControl"] > div {{
+  gap:0 !important;
 }}
-#{box} + div.stButton + div.stButton {{
-  position:relative !important; top:-36px !important; left:40px !important;
+div[data-testid="stSegmentedControl"] button, div[data-testid="stSegmentedControl"] label {{
+  min-width:36px !important; height:36px !important; padding:0 0 !important;
+  border-radius:8px !important; font-size:18px !important;
 }}
-#{box} + div.stButton + div.stButton > button {{
-  width:36px !important; height:36px !important; border-radius:8px !important; padding:0 !important;
-  color:{'#fb8c00' if fav_on else '#111111'} !important;
-  background:{'#fff3e0' if fav_on else '#ffffff'} !important;
+div[data-testid="stSegmentedControl"] label:first-child {{
+  border:1px solid #ccc !important; background:#fff !important; color:#111 !important;
+}}
+div[data-testid="stSegmentedControl"] label:last-child {{
   border:1px solid {'#ffe0b2' if fav_on else '#cccccc'} !important;
+  background:{'#fff3e0' if fav_on else '#ffffff'} !important;
+  color:{'#fb8c00' if fav_on else '#111111'} !important;
 }}
 </style>
 """, unsafe_allow_html=True)
+        del_clicked = False
+        fav_clicked = False
+        if choice == "×":
+            del_clicked = True
+        elif choice in ("☆","★"):
+            fav_clicked = True
+
         if del_clicked:
             st.session_state.courses=[c for c in st.session_state.courses if not (c['subject']==r['subject'] and c['cls']==r['cls'])]
             st.session_state.data.pop((r['subject'], r['cls']), None)
             st.session_state.favorites.discard(k)
             if rerun: rerun()
-        if 'fav_clicked' in locals() and fav_clicked:
+        if fav_clicked:
             if fav_on: st.session_state.favorites.discard(k)
             else: st.session_state.favorites.add(k)
             if rerun: rerun()
