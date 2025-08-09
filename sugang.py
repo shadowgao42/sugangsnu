@@ -40,12 +40,10 @@ def open_search(drv, subj:str):
     drv.get("https://shine.snu.ac.kr/uni/sugang/cc/cc100.action")
     WebDriverWait(drv,TIMEOUT).until(EC.presence_of_element_located((By.ID,"srchOpenSchyy")))
     drv.execute_script(
-        """
-        document.getElementById('srchOpenSchyy').value = arguments[0];
-        document.getElementById('srchOpenShtm').value  = arguments[1];
-        document.getElementById('srchSbjtCd').value    = arguments[2];
-        fnInquiry();
-        """, str(DEFAULT_YEAR), SEM_VALUE[DEFAULT_SEM], subj.strip()
+        """document.getElementById('srchOpenSchyy').value = arguments[0];
+document.getElementById('srchOpenShtm').value  = arguments[1];
+document.getElementById('srchSbjtCd').value    = arguments[2];
+fnInquiry();""", str(DEFAULT_YEAR), SEM_VALUE[DEFAULT_SEM], subj.strip()
     )
 
 def _scan_current_page(drv, cls:str):
@@ -66,23 +64,20 @@ def _scan_current_page(drv, cls:str):
 
 def _has_page(drv, page:int)->bool:
     return drv.execute_script(
-        """
-        const p = String(arguments[0]);
-        const patterns = [
-            "fnGotoPage(" + p + ")",
-            "fnGotoPage('" + p + "')",
-            'fnGotoPage("' + p + '")',
-            "javascript:fnGotoPage(" + p + ")",
-            "javascript:fnGotoPage('" + p + "')",
-            'javascript:fnGotoPage("' + p + '")'
-        ];
-        return Array.from(document.querySelectorAll('a[href]'))
-          .some(a => patterns.includes(a.getAttribute('href')));
-        """, str(page)
+        """const p = String(arguments[0]);
+const patterns = [
+  "fnGotoPage(" + p + ")",
+  "fnGotoPage('" + p + "')",
+  'fnGotoPage("' + p + '")',
+  "javascript:fnGotoPage(" + p + ")",
+  "javascript:fnGotoPage('" + p + "')",
+  'javascript:fnGotoPage("' + p + '")'
+];
+return Array.from(document.querySelectorAll('a[href]'))
+  .some(a => patterns.includes(a.getAttribute('href')));""", str(page)
     ) or False
 
 def _goto_page(drv, page:int):
-    # snapshot old tbody
     try:
         tbody = WebDriverWait(drv, TIMEOUT).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "table.tbl_basic tbody"))
@@ -91,7 +86,6 @@ def _goto_page(drv, page:int):
     except Exception:
         old_html = None
 
-    # try direct call
     direct_ok = True
     try:
         drv.execute_script("fnGotoPage(arguments[0]);", str(page))
@@ -99,23 +93,20 @@ def _goto_page(drv, page:int):
         direct_ok = False
 
     if not direct_ok:
-        # fallback: find anchor by href variants and click via JS
         clicked = drv.execute_script(
-            """
-            const p = String(arguments[0]);
-            const hrefs = [
-              "javascript:fnGotoPage(" + p + ");",
-              "javascript:fnGotoPage('" + p + "');",
-              'javascript:fnGotoPage("' + p + '");',
-              "fnGotoPage(" + p + ");",
-              "fnGotoPage('" + p + "');",
-              'fnGotoPage("' + p + '");'
-            ];
-            const a = Array.from(document.querySelectorAll('a[href]'))
-              .find(x => hrefs.includes(x.getAttribute('href')));
-            if (a) { a.click(); return true; }
-            return false;
-            """, str(page)
+            """const p = String(arguments[0]);
+const hrefs = [
+  "javascript:fnGotoPage(" + p + ");",
+  "javascript:fnGotoPage('" + p + "');",
+  'javascript:fnGotoPage("' + p + '");',
+  "fnGotoPage(" + p + ");",
+  "fnGotoPage('" + p + "');",
+  'fnGotoPage("' + p + '");'
+];
+const a = Array.from(document.querySelectorAll('a[href]'))
+  .find(x => hrefs.includes(x.getAttribute('href')));
+if (a) { a.click(); return true; }
+return false;""", str(page)
         )
         if not clicked:
             raise RuntimeError("해당 페이지 링크를 찾지 못했습니다.")
@@ -171,7 +162,6 @@ def fetch(subj:str, cls:str, headless:bool):
 # ================= UI ==================
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
 
-# CSS for bar + mobile layout
 st.markdown("""
 <style>
 .bar-track {
@@ -189,13 +179,17 @@ st.markdown("""
   font-weight:600; font-size:13px;
 }
 .course-title { font-weight: 600; }
-.desktop-title { display:block; }
-.mobile-title { display:none; }
-@media (max-width: 640px) {
-  .bar-track { width: 100% !important; }
-  .desktop-title { display:none; }
-  .mobile-title { display:block; margin-top:4px; font-weight:600; }
+.control-wrap { display:flex; gap:4px; align-items:center; }
+.control-wrap .stButton { display:inline-block; margin:0; }
+.control-wrap .stButton > button {
+  width: 36px !important;
+  height: 36px !important;
+  padding: 0 !important;
+  border-radius: 8px !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
 }
+@media (max-width: 640px) { .bar-track { width: 100% !important; } }
 </style>
 """, unsafe_allow_html=True)
 
@@ -226,7 +220,6 @@ def _safe_id(*parts):
     s = "_".join(str(p) for p in parts)
     return re.sub(r"[^0-9a-zA-Z_-]+", "_", s)
 
-# queue fetch rather than blocking
 if add:
     s, c = subj.strip(), cls.strip()
     if not s or not c:
@@ -237,7 +230,6 @@ if add:
         st.session_state.pending.append((s, c))
         (getattr(st, "toast", None) or st.info)(f"{s}-{c} 데이터 로딩 시작")
 
-# autorefresh
 ar = getattr(st, "autorefresh", None) or getattr(st, "st_autorefresh", None)
 if auto and ar:
     ar(interval=interval*1000, key=auto_key)
@@ -258,7 +250,6 @@ def render():
         st.info("사이드바에서 과목을 등록하세요.")
         return
 
-    # Build (original_index, result) list
     items = []
     for i, c in enumerate(st.session_state.courses):
         k = (c["subject"], c["cls"])
@@ -269,7 +260,7 @@ def render():
     def sort_key(item):
         i, r = item
         if r is None:
-            return (1, 0, i)  # push Nones down
+            return (1, 0, i)
         fav_flag = 0 if (r['subject'], r['cls']) in favs else 1
         ratio = r.get("ratio", 0)
         ratio_key = -ratio if sort_ratio else 0
@@ -282,50 +273,31 @@ def render():
             st.info("데이터 로딩 중...")
             continue
 
-        # Two main columns: [buttons][info]
-        col = st.columns([2,8])
+        col = st.columns([2, 8])
         k = (r['subject'], r['cls'])
         safekey = _safe_id(r['subject'], r['cls'])
 
-        # --- Button row with tight spacing ---
+        wrap_id = f"ctl_{safekey}"
+        fav_on = k in st.session_state.favorites
+        fav_label = "★" if fav_on else "☆"
+
         with col[0]:
-            btnrow_id = f"btnrow_{safekey}"
-            st.markdown(f"<div id='{btnrow_id}'>", unsafe_allow_html=True)
-            b1, b2 = st.columns([1,1])
-            with b1:
-                del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
-            with b2:
-                fav_on = k in st.session_state.favorites
-                fav_label = "★" if fav_on else "☆"
-                fav_clicked = st.button(fav_label, key=f"fav_{safekey}", help="즐겨찾기 토글")
-            # CSS to reduce gap and style buttons identically
+            st.markdown(f"<div id='{wrap_id}' class='control-wrap'>", unsafe_allow_html=True)
+            del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
+            fav_clicked = st.button(fav_label, key=f"fav_{safekey}", help="즐겨찾기 토글")
             star_color = "#fb8c00" if fav_on else "#111111"
             star_bg    = "#fff3e0" if fav_on else "#ffffff"
             star_bd    = "#ffe0b2" if fav_on else "#cccccc"
             st.markdown(
-                f"""
-                <style>
-                #{btnrow_id} [data-testid="column"] {{
-                    padding-left: 1px !important;
-                    padding-right: 1px !important;
-                }}
-                #{btnrow_id} button {{
-                    width: 36px !important; height: 36px !important; padding: 0 !important;
-                    border-radius: 8px !important; font-size: 18px !important; line-height: 1 !important;
-                }}
-                #{btnrow_id} button[kind="secondary"] {{ border: 1px solid #ccc !important; background:#fff !important; color:#111 !important; }}
-                /* Right button (favorite) dynamic look */
-                #{btnrow_id} button[data-testid="baseButton-secondary"]:last-child {{
-                    color: {star_color} !important;
-                    background: {star_bg} !important;
-                    border: 1px solid {star_bd} !important;
-                }}
-                </style>
-                """,
-                unsafe_allow_html=True,
+                f"""<style>
+#{wrap_id} .stButton:nth-child(1) > button {{
+  color: #111 !important; background: #fff !important; border: 1px solid #ccc !important;
+}}
+#{wrap_id} .stButton:nth-child(2) > button {{
+  color: {star_color} !important; background: {star_bg} !important; border: 1px solid {star_bd} !important;
+}}
+</style>""", unsafe_allow_html=True
             )
-            # Mobile title (next to buttons area on small screens)
-            st.markdown(f"<div class='mobile-title'>{r['title']}</div>", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
         if del_clicked:
@@ -341,18 +313,15 @@ def render():
                 st.session_state.favorites.add(k)
             if rerun: rerun()
 
-        # --- Info area ---
         with col[1]:
             status = "만석" if r['current'] >= r['quota'] else "여석 있음"
             color = "#ff8a80" if r['current'] >= r['quota'] else "#81d4fa"
-            # Desktop title shown here; hidden on mobile via CSS
-            st.markdown(f"<div class='desktop-title course-title'>{r['title']}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='course-title'>{r['title']}</div>", unsafe_allow_html=True)
             bar(r['current'], r['quota'], color)
             st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
 
 render()
 
-# after render, handle pending and refresh
 if st.session_state.pending:
     subj, cls = st.session_state.pending.pop(0)
     d = fetch(subj, cls, st.session_state.headless)
