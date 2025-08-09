@@ -306,8 +306,8 @@ def render():
                 f"""
                 <style>
                 #{btnrow_id} [data-testid="column"] {{
-                    padding-left: 2px !important;
-                    padding-right: 2px !important;
+                    padding-left: 1px !important;
+                    padding-right: 1px !important;
                 }}
                 #{btnrow_id} button {{
                     width: 36px !important; height: 36px !important; padding: 0 !important;
