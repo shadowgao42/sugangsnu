@@ -87,15 +87,31 @@ def _goto_page(drv, page:int):
     except Exception:
         old_html = None
 
+    # Try direct function call first
+    direct_ok = True
     try:
         drv.execute_script("fnGotoPage(arguments[0]);", str(page))
     except Exception:
-        link_xpath = ('//a[contains(@href, "fnGotoPage({0})") or contains(@href, "fnGotoPage(\\'{0}\\')") '
-                      'or contains(@href, "fnGotoPage(\\\\\\"{0}\\\\\\")")]').format(page)
-        try:
-            link = drv.find_element(By.XPATH, link_xpath)
-            link.click()
-        except Exception:
+        direct_ok = False
+
+    if not direct_ok:
+        # Fallback: find anchor by exact href variants and click via JS
+        clicked = drv.execute_script("""
+
+        const p = String(arguments[0]);
+        const hrefs = [
+          "javascript:fnGotoPage(" + p + ");",
+          "javascript:fnGotoPage('" + p + "');",
+          'javascript:fnGotoPage("' + p + '");',
+          "fnGotoPage(" + p + ");",
+          "fnGotoPage('" + p + "');",
+          'fnGotoPage("' + p + '");'
+        ];
+        const a = Array.from(document.querySelectorAll('a[href]')).find(x => hrefs.includes(x.getAttribute('href')));
+        if (a) { a.click(); return true; }
+        return false;
+        """, String(page))
+        if not clicked:
             raise RuntimeError("해당 페이지 링크를 찾지 못했습니다.")
 
     WebDriverWait(drv, TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR,"table.tbl_basic tbody tr")))
@@ -111,6 +127,7 @@ def _goto_page(drv, page:int):
             time.sleep(0.1)
 
 def read_info(drv, cls:str):
+(drv, cls:str):
     found = _scan_current_page(drv, cls)
     if found:
         return found
