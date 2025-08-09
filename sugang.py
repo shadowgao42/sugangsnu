@@ -179,16 +179,6 @@ st.markdown("""
   font-weight:600; font-size:13px;
 }
 .course-title { font-weight: 600; }
-.control-wrap { display:flex; gap:4px; align-items:center; }
-.control-wrap .stButton { display:inline-block; margin:0; }
-.control-wrap .stButton > button {
-  width: 36px !important;
-  height: 36px !important;
-  padding: 0 !important;
-  border-radius: 8px !important;
-  font-size: 18px !important;
-  line-height: 1 !important;
-}
 @media (max-width: 640px) { .bar-track { width: 100% !important; } }
 </style>
 """, unsafe_allow_html=True)
@@ -273,32 +263,43 @@ def render():
             st.info("데이터 로딩 중...")
             continue
 
+        # Layout: [Controls][Info]; Controls uses nested columns to align X and ★ side-by-side
         col = st.columns([2, 8])
         k = (r['subject'], r['cls'])
         safekey = _safe_id(r['subject'], r['cls'])
 
-        wrap_id = f"ctl_{safekey}"
         fav_on = k in st.session_state.favorites
         fav_label = "★" if fav_on else "☆"
 
         with col[0]:
-            st.markdown(f"<div id='{wrap_id}' class='control-wrap'>", unsafe_allow_html=True)
-            del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
-            fav_clicked = st.button(fav_label, key=f"fav_{safekey}", help="즐겨찾기 토글")
-            star_color = "#fb8c00" if fav_on else "#111111"
-            star_bg    = "#fff3e0" if fav_on else "#ffffff"
-            star_bd    = "#ffe0b2" if fav_on else "#cccccc"
-            st.markdown(
-                f"""<style>
-#{wrap_id} .stButton:nth-child(1) > button {{
-  color: #111 !important; background: #fff !important; border: 1px solid #ccc !important;
+            ctrl1, ctrl2 = st.columns([1,1])  # left: X, right: ★
+            with ctrl1:
+                del_wrap = f"delwrap_{safekey}"
+                st.markdown(f"<div id='{del_wrap}'>", unsafe_allow_html=True)
+                del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
+                st.markdown(f"""<style>
+#{del_wrap} button {{
+  width:36px !important; height:36px !important; padding:0 !important;
+  border-radius:8px !important; font-size:18px !important; line-height:1 !important;
+  color:#111 !important; background:#fff !important; border:1px solid #ccc !important;
 }}
-#{wrap_id} .stButton:nth-child(2) > button {{
-  color: {star_color} !important; background: {star_bg} !important; border: 1px solid {star_bd} !important;
+</style>""", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+            with ctrl2:
+                fav_wrap = f"favwrap_{safekey}"
+                st.markdown(f"<div id='{fav_wrap}'>", unsafe_allow_html=True)
+                fav_clicked = st.button(fav_label, key=f"fav_{safekey}", help="즐겨찾기 토글")
+                star_color = "#fb8c00" if fav_on else "#111111"
+                star_bg    = "#fff3e0" if fav_on else "#ffffff"
+                star_bd    = "#ffe0b2" if fav_on else "#cccccc"
+                st.markdown(f"""<style>
+#{fav_wrap} button {{
+  width:36px !important; height:36px !important; padding:0 !important;
+  border-radius:8px !important; font-size:18px !important; line-height:1 !important;
+  color:{star_color} !important; background:{star_bg} !important; border:1px solid {star_bd} !important;
 }}
-</style>""", unsafe_allow_html=True
-            )
-            st.markdown("</div>", unsafe_allow_html=True)
+</style>""", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
 
         if del_clicked:
             st.session_state.courses = [c for c in st.session_state.courses if not (c['subject'] == r['subject'] and c['cls'] == r['cls'])]
