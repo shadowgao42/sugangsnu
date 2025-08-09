@@ -12,7 +12,7 @@ SEM_VALUE = {1: "U000200001U000300001", 2: "U000200001U000300002", 3: "U00020000
 SEM_NAME  = {1: "1학기", 2: "여름학기", 3: "2학기", 4: "겨울학기"}
 TITLE_COL, CAP_COL, CURR_COL, PROF_COL = 6, 13, 14, 11
 TIMEOUT = 10
-MAX_PAGES_TO_TRY = 100  # 페이지네이션 최대 시도 페이지
+MAX_PAGES_TO_TRY = 100
 
 CHROMEDRIVER = [
     "/usr/bin/chromedriver",
@@ -84,7 +84,6 @@ def _has_page(drv, page:int)->bool:
     ) or False
 
 def _goto_page(drv, page:int):
-    # snapshot old tbody
     try:
         tbody = WebDriverWait(drv, TIMEOUT).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "table.tbl_basic tbody"))
@@ -93,7 +92,6 @@ def _goto_page(drv, page:int):
     except Exception:
         old_html = None
 
-    # try direct call
     direct_ok = True
     try:
         drv.execute_script("fnGotoPage(arguments[0]);", str(page))
@@ -101,7 +99,6 @@ def _goto_page(drv, page:int):
         direct_ok = False
 
     if not direct_ok:
-        # fallback: find anchor by href variants and click via JS
         clicked = drv.execute_script(
             """
             const p = String(arguments[0]);
@@ -173,7 +170,7 @@ def fetch(subj:str, cls:str, headless:bool):
 # ================= UI ==================
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
 
-# CSS for bars
+# CSS
 st.markdown("""
 <style>
 .bar-track {
@@ -255,7 +252,6 @@ def render():
         st.info("사이드바에서 과목을 등록하세요.")
         return
 
-    # Build (original_index, result) for stable sorting
     items = []
     for i, c in enumerate(st.session_state.courses):
         k = (c["subject"], c["cls"])
@@ -283,43 +279,40 @@ def render():
         k = (r['subject'], r['cls'])
         safekey = _safe_id(r['subject'], r['cls'])
 
-        # -------- Controls in nested columns (zero-gap, nowrap) --------
         with col[0]:
-            wrap_id = f"ctl_{safekey}"
-            st.markdown(f"<div id='{wrap_id}'></div>", unsafe_allow_html=True)
-            # CSS that targets the NEXT nested stHorizontalBlock in this left column
+            # Marker (defines a block with 36px reserved height)
+            mark = f"ctl_{safekey}"
+            st.markdown(f"<div id='{mark}' style='height:36px'></div>", unsafe_allow_html=True)
+
+            # Native buttons
+            del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
+            fav_on = k in st.session_state.favorites
+            fav_clicked = st.button("★" if fav_on else "☆", key=f"fav_{safekey}", help="즐겨찾기 토글")
+
+            # Visual: place the 2nd button left of its own flow (up one row, right 40px)
+            star_color = "#fb8c00" if fav_on else "#111111"
+            star_bg    = "#fff3e0" if fav_on else "#ffffff"
+            star_bd    = "#ffe0b2" if fav_on else "#cccccc"
             st.markdown(f"""
 <style>
-#{wrap_id} ~ div[data-testid="stHorizontalBlock"] {{
-  gap:0 !important;
-  flex-wrap:nowrap !important;
-}}
-#{wrap_id} ~ div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
-  padding-left:0 !important; padding-right:0 !important;
-}}
-#{wrap_id} ~ div[data-testid="stHorizontalBlock"] button {{
+/* First button base look */
+#del_{safekey} {{ }}
+/* Style both buttons */
+div[data-testid="column"] div.stButton > button {{
   width:36px !important; height:36px !important; padding:0 !important;
   border-radius:8px !important; font-size:18px !important; line-height:1 !important;
 }}
-</style>
-""", unsafe_allow_html=True)
-
-            c1, c2 = st.columns([1,1])
-            fav_on = k in st.session_state.favorites
-            with c1:
-                del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
-            with c2:
-                fav_clicked = st.button("★" if fav_on else "☆", key=f"fav_{safekey}", help="즐겨찾기 토글")
-                star_color = "#fb8c00" if fav_on else "#111111"
-                star_bg    = "#fff3e0" if fav_on else "#ffffff"
-                star_bd    = "#ffe0b2" if fav_on else "#cccccc"
-                st.markdown(f"""
-<style>
-#{wrap_id} ~ div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) button {{
-  color:{star_color} !important; background:{star_bg} !important; border:1px solid {star_bd} !important;
+/* Move the second stButton up to sit beside the first one (no wrap dependency) */
+#{mark} + div.stButton + div.stButton {{
+  margin-top:-36px !important;
+  margin-left:40px !important;
 }}
-#{wrap_id} ~ div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) button {{
+/* Colors */
+#{mark} + div.stButton > button {{
   color:#111 !important; background:#fff !important; border:1px solid #ccc !important;
+}}
+#{mark} + div.stButton + div.stButton > button {{
+  color:{star_color} !important; background:{star_bg} !important; border:1px solid {star_bd} !important;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -337,7 +330,6 @@ def render():
                 st.session_state.favorites.add(k)
             if rerun: rerun()
 
-        # -------- Info --------
         with col[1]:
             status = "만석" if r['current'] >= r['quota'] else "여석 있음"
             color = "#ff8a80" if r['current'] >= r['quota'] else "#81d4fa"
@@ -347,7 +339,6 @@ def render():
 
 render()
 
-# after render, handle pending and refresh
 if st.session_state.pending:
     subj, cls = st.session_state.pending.pop(0)
     d = fetch(subj, cls, st.session_state.headless)
