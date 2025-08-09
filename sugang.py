@@ -11,7 +11,7 @@ SEM_VALUE = {1: "U000200001U000300001", 2: "U000200001U000300002", 3: "U00020000
 SEM_NAME  = {1: "1학기", 2: "여름학기", 3: "2학기", 4: "겨울학기"}
 TITLE_COL, CAP_COL, CURR_COL, PROF_COL, TIME_COL = 6, 13, 14, 11, 8
 TIMEOUT = 10
-MAX_PAGES_TO_TRY = 20  # 안전장치: 최대 20페이지까지 시도
+MAX_PAGES_TO_TRY = 20                       
 
 CHROMEDRIVER = [
     "/usr/bin/chromedriver",
@@ -39,38 +39,30 @@ def _int(txt:str)->int:
 DAY_ORDER = "월화수목금토일"
 
 def _format_time_caption(cell_text: str) -> str:
-    # 수업교시 셀 텍스트에서 '화(09:30~10:45)' 패턴들을 추출하여
-    # 동일 시간대끼리 요일을 묶어 '화/목 (09:30~10:45) / 수 (11:00~12:15)' 형태로 포맷한다.
     if not cell_text:
         return ""
-    s = cell_text.replace("\xa0", " ").strip()
-
-    # '요일(시작~끝)' 패턴 추출
-    matches = re.findall(r"([월화수목금토일])\s*[\(（]\s*(\d{2}:\d{2})\s*~\s*(\d{2}:\d{2})\s*[\)）]", s, flags=re.DOTALL)
+    s = cell_text.replace("\xa0", " ")
+    s = s.replace("\r", "\n").replace("\u3000", " ").strip()
+    pattern = r"([월화수목금토일])\s*[\(（]\s*(\d{1,2})[:：](\d{2})\s*[~∼～\-]\s*(\d{1,2})[:：](\d{2})\s*[\)）]"
+    matches = re.findall(pattern, s, flags=re.DOTALL)
+    if not matches:
+        s2 = " ".join(s.split())
+        matches = re.findall(pattern, s2, flags=re.DOTALL)
     if not matches:
         return ""
-
-    # 시간대별로 요일 묶기
-    groups = {}  # "09:30~10:45" -> ["화","목"]
-    for day, t1, t2 in matches:
+    groups = {}
+    for day, h1, m1, h2, m2 in matches:
+        t1 = f"{int(h1):02d}:{m1}"
+        t2 = f"{int(h2):02d}:{m2}"
         tm = f"{t1}~{t2}"
         groups.setdefault(tm, []).append(day)
-
-    # 요일 정렬
-    for tm in groups:
-        groups[tm].sort(key=lambda d: DAY_ORDER.index(d))
-
+    for tm in list(groups):
+        groups[tm] = sorted(set(groups[tm]), key=lambda d: DAY_ORDER.index(d))
     def start_minutes(tm: str) -> int:
         hh, mm = map(int, tm.split("~")[0].split(":"))
-        return hh * 60 + mm
-
-    items = sorted(
-        groups.items(),
-        key=lambda kv: (min(DAY_ORDER.index(d) for d in kv[1]), start_minutes(kv[0]))
-    )
-    parts = [f"{'/'.join(days)} ({tm})" for tm, days in items]
-    return " / ".join(parts)
-
+        return hh*60 + mm
+    items = sorted(groups.items(), key=lambda kv: (min(DAY_ORDER.index(d) for d in kv[1]), start_minutes(kv[0])))
+    return " / ".join([f"{'/'.join(days)} ({tm})" for tm, days in items])
 
 def open_search(drv, subj:str):
     drv.get("https://shine.snu.ac.kr/uni/sugang/cc/cc100.action")
@@ -92,7 +84,7 @@ def _scan_current_page(drv, cls:str):
         tds = tr.find_elements(By.TAG_NAME,"td")
         if len(tds)<=CURR_COL:
             continue
-        # 매치되는 '분반' 행(강좌번호가 있는 첫 행)을 찾는다
+                                        
         if any(td.text.strip()==cls for td in tds):
             cap = tds[CAP_COL].text
             m = re.search(r"\((\d+)\)", cap)
@@ -100,21 +92,21 @@ def _scan_current_page(drv, cls:str):
             current = _int(tds[CURR_COL].text)
             title = tds[TITLE_COL].text.strip()
             prof  = tds[PROF_COL].text.strip()
-            # 시간: 현재 행 + 뒤에 이어지는 '연속 행(제목 비어있음)'의 시간까지 수집
+                                                         
             time_texts = []
             if len(tds)>TIME_COL:
                 time_texts.append(tds[TIME_COL].text)
-            # 다음 행들에서 TITLE_COL이 비어 있으면 같은 과목 블록으로 간주
+                                                     
             j = i + 1
             while j < len(rows):
                 tds2 = rows[j].find_elements(By.TAG_NAME,"td")
                 if len(tds2)<=TIME_COL:
                     break
                 title2 = tds2[TITLE_COL].text.strip()
-                # 새 과목 블록 시작이면 중단
+                                 
                 if title2:
                     break
-                # 같은 블록이면 시간 칸만 추가(비어있으면 무시)
+                                            
                 ttxt = tds2[TIME_COL].text.strip()
                 if ttxt:
                     time_texts.append(ttxt)
@@ -125,18 +117,18 @@ def _scan_current_page(drv, cls:str):
 
 
 def _goto_page(drv, page:int):
-    # 페이지 전환: 기존 첫 행을 기억해두고 변경될 때까지 대기
+                                      
     try:
         tbody = WebDriverWait(drv, TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.tbl_basic tbody")))
         old_html = tbody.get_attribute("innerHTML")
     except Exception:
         old_html = None
-    # 페이지 이동 (예: javascript:fnGotoPage(2);)
+                                           
     drv.execute_script("fnGotoPage(arguments[0]);", page)
-    # DOM 업데이트 대기
+                 
     WebDriverWait(drv, TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR,"table.tbl_basic tbody tr")))
     if old_html is not None:
-        # 내용이 바뀔 때까지 잠깐 대기 (최대 TIMEOUT초)
+                                        
         t0 = time.time()
         while time.time() - t0 < TIMEOUT:
             try:
@@ -148,17 +140,17 @@ def _goto_page(drv, page:int):
             time.sleep(0.1)
 
 def read_info(drv, cls:str):
-    # 1페이지 검색
+             
     found = _scan_current_page(drv, cls)
     if found:
         return found
 
-    # 페이지네이션: 2페이지부터 MAX_PAGES_TO_TRY까지 순차 탐색
+                                             
     for p in range(2, MAX_PAGES_TO_TRY + 1):
         try:
             _goto_page(drv, p)
         except Exception:
-            # 더 이상 페이지가 없거나 이동 실패 시 중단
+                                      
             break
         found = _scan_current_page(drv, cls)
         if found:
@@ -178,8 +170,8 @@ def fetch(subj:str, cls:str, headless:bool):
         return {"subject":subj,"cls":cls,"error":"행을 찾지 못했습니다."}
     return {"subject":subj,"cls":cls,"quota":quota,"current":current,"title":title,"prof":prof,"time":time_caption,"ratio":current/quota if quota else 0}
 
-# --- UI 부분 ---
-# 1) 고정폭(반응형) 막대: 제목은 별도의 헤더(× 버튼 오른쪽)에 배치
+               
+                                          
 def bar(curr:int, quota:int):
     pct = curr/quota*100 if quota else 0
     color = "#f8b4b4" if curr >= quota else "#a5d8ff"
@@ -199,7 +191,7 @@ def bar(curr:int, quota:int):
 
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
 
-# --- Global CSS: keep column rows from stacking on mobile ---
+                                                              
 st.markdown(
     """
     <style>
@@ -215,7 +207,7 @@ st.markdown(
 )
 
 
-# session state
+               
 if "courses" not in st.session_state: st.session_state.courses=[]
 if "data" not in st.session_state: st.session_state.data={}
 if "pending" not in st.session_state: st.session_state.pending=[]
@@ -239,7 +231,7 @@ with st.sidebar:
     st.session_state.headless = st.checkbox("Headless 모드", st.session_state.headless)
     sort_ratio = st.checkbox("채워진 비율 순 배열", True)
 
-# queue fetch rather than blocking
+                                  
 if add:
     s,c = subj.strip(), cls.strip()
     if not s or not c:
@@ -250,7 +242,7 @@ if add:
         st.session_state.pending.append((s,c))
         (getattr(st,"toast",None) or st.info)(f"{s}-{c} 데이터 로딩 시작")
 
-# autorefresh
+             
 ar = getattr(st,"autorefresh",None) or getattr(st,"st_autorefresh",None)
 if auto and ar:
     ar(interval=interval*1000, key=auto_key)
@@ -273,10 +265,10 @@ def render():
             st.error(f"{r['subject']}-{r['cls']}: {r['error']}")
             continue
 
-        # === 카드 컨테이너 ===
+                         
         card = st.container()
         with card:
-            # 헤더: [× 버튼][제목] — 같은 구역, 같은 행
+                                          
             hcol = st.columns([0.06, 0.94])
             delete_key = f"del_{r['subject']}_{r['cls']}"
             if hcol[0].button("×", key=delete_key, help="삭제"):
@@ -284,7 +276,7 @@ def render():
                 st.session_state.data.pop((r['subject'],r['cls']),None)
                 if rerun: rerun()
             with hcol[1]:
-                # 제목(과목명) — 버튼 바로 오른쪽
+                                     
                 st.markdown(
                     f"""
                     <div style="display:flex;align-items:center;gap:8px;min-height:32px;">
@@ -296,16 +288,16 @@ def render():
                     """,
                     unsafe_allow_html=True
                 )
-# 본문: 막대
+        
                 bar(r['current'], r['quota'])
 
-                # 추가 정보
+                       
                 status = "만석" if r['current']>=r['quota'] else "여석있음"
                 st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
 
 render()
 
-# after render, handle pending and refresh
+                                          
 if st.session_state.pending:
     subj,cls = st.session_state.pending.pop(0)
     d = fetch(subj,cls,st.session_state.headless)
@@ -319,7 +311,7 @@ if st.session_state.pending:
         st.session_state.courses.append({"subject":subj,"cls":cls})
     if rerun: rerun()
 elif refresh_clicked or auto:
-    # full refresh
+                  
     for c in st.session_state.courses:
         k=(c["subject"],c["cls"])
         st.session_state.data[k] = fetch(*k, st.session_state.headless)
