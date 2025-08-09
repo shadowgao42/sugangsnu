@@ -1,4 +1,3 @@
-
 import os, re, shutil, time, streamlit as st
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -174,7 +173,7 @@ def fetch(subj:str, cls:str, headless:bool):
 # ================= UI ==================
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
 
-# CSS (bars)
+# CSS for bars
 st.markdown("""
 <style>
 .bar-track {
@@ -280,45 +279,47 @@ def render():
             st.info("데이터 로딩 중...")
             continue
 
-        # Marker before columns so we can style THIS row's columns via sibling CSS.
-        row_id = f"row_{_safe_id(r['subject'], r['cls'])}"
-        st.markdown(f"<span id='{row_id}'></span>", unsafe_allow_html=True)
-        st.markdown(f"""
+        col = st.columns([2, 8])
+        k = (r['subject'], r['cls'])
+        safekey = _safe_id(r['subject'], r['cls'])
+
+        # -------- Controls in nested columns (zero-gap, nowrap) --------
+        with col[0]:
+            wrap_id = f"ctl_{safekey}"
+            st.markdown(f"<div id='{wrap_id}'></div>", unsafe_allow_html=True)
+            # CSS that targets the NEXT nested stHorizontalBlock in this left column
+            st.markdown(f"""
 <style>
-#{row_id} + div[data-testid="stHorizontalBlock"] {{
-  gap:0 !important; flex-wrap:nowrap !important;
+#{wrap_id} ~ div[data-testid="stHorizontalBlock"] {{
+  gap:0 !important;
+  flex-wrap:nowrap !important;
 }}
-#{row_id} + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
+#{wrap_id} ~ div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
   padding-left:0 !important; padding-right:0 !important;
 }}
-#{row_id} + div[data-testid="stHorizontalBlock"] button {{
+#{wrap_id} ~ div[data-testid="stHorizontalBlock"] button {{
   width:36px !important; height:36px !important; padding:0 !important;
   border-radius:8px !important; font-size:18px !important; line-height:1 !important;
-}}
-#{row_id} + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) button {{
-  color:#111 !important; background:#fff !important; border:1px solid #ccc !important;
 }}
 </style>
 """, unsafe_allow_html=True)
 
-        col = st.columns([1, 1, 8])
-        k = (r['subject'], r['cls'])
-        safekey = _safe_id(r['subject'], r['cls'])
-
-        fav_on = k in st.session_state.favorites
-
-        # Controls
-        with col[0]:
-            del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
-        with col[1]:
-            fav_clicked = st.button("★" if fav_on else "☆", key=f"fav_{safekey}", help="즐겨찾기 토글")
-            star_color = "#fb8c00" if fav_on else "#111111"
-            star_bg    = "#fff3e0" if fav_on else "#ffffff"
-            star_bd    = "#ffe0b2" if fav_on else "#cccccc"
-            st.markdown(f"""
+            c1, c2 = st.columns([1,1])
+            fav_on = k in st.session_state.favorites
+            with c1:
+                del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
+            with c2:
+                fav_clicked = st.button("★" if fav_on else "☆", key=f"fav_{safekey}", help="즐겨찾기 토글")
+                star_color = "#fb8c00" if fav_on else "#111111"
+                star_bg    = "#fff3e0" if fav_on else "#ffffff"
+                star_bd    = "#ffe0b2" if fav_on else "#cccccc"
+                st.markdown(f"""
 <style>
-#row_{_safe_id(r['subject'], r['cls'])} + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) button {{
+#{wrap_id} ~ div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) button {{
   color:{star_color} !important; background:{star_bg} !important; border:1px solid {star_bd} !important;
+}}
+#{wrap_id} ~ div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) button {{
+  color:#111 !important; background:#fff !important; border:1px solid #ccc !important;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -336,8 +337,8 @@ def render():
                 st.session_state.favorites.add(k)
             if rerun: rerun()
 
-        # Info
-        with col[2]:
+        # -------- Info --------
+        with col[1]:
             status = "만석" if r['current'] >= r['quota'] else "여석 있음"
             color = "#ff8a80" if r['current'] >= r['quota'] else "#81d4fa"
             st.markdown(f"<div class='course-title'>{r['title']}</div>", unsafe_allow_html=True)
