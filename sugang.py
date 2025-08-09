@@ -65,7 +65,6 @@ def _scan_current_page(drv, cls:str):
     return None
 
 def _has_page(drv, page:int)->bool:
-    # 페이지 링크가 존재하는지 href를 통해 확인 (fnGotoPage(2) 또는 fnGotoPage('2'))
     return drv.execute_script(
         """
         const p = String(arguments[0]);
@@ -82,29 +81,23 @@ def _has_page(drv, page:int)->bool:
     ) or False
 
 def _goto_page(drv, page:int):
-    # tbody 내용 스냅샷
     try:
         tbody = WebDriverWait(drv, TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.tbl_basic tbody")))
         old_html = tbody.get_attribute("innerHTML")
     except Exception:
         old_html = None
 
-    # 1) 우선 함수 직접 호출
     try:
         drv.execute_script("fnGotoPage(arguments[0]);", str(page))
     except Exception:
-        # 2) 링크 클릭으로 폴백
-        link = None
+        link_xpath = ('//a[contains(@href, "fnGotoPage({0})") or contains(@href, "fnGotoPage(\'{0}\')") '
+                      'or contains(@href, "fnGotoPage(\\\"{0}\\\")")]').format(page)
         try:
-            link = drv.find_element(By.XPATH, f"//a[contains(@href, "fnGotoPage({page})") or contains(@href, "fnGotoPage('{page}')") or contains(@href, 'fnGotoPage("{page}")')]")
-        except Exception:
-            pass
-        if link:
+            link = drv.find_element(By.XPATH, link_xpath)
             link.click()
-        else:
+        except Exception:
             raise RuntimeError("해당 페이지 링크를 찾지 못했습니다.")
 
-    # DOM 변경 대기
     WebDriverWait(drv, TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR,"table.tbl_basic tbody tr")))
     if old_html is not None:
         t0 = time.time()
@@ -118,12 +111,9 @@ def _goto_page(drv, page:int):
             time.sleep(0.1)
 
 def read_info(drv, cls:str):
-    # 현재 페이지부터 스캔
     found = _scan_current_page(drv, cls)
     if found:
         return found
-
-    # 2페이지부터 존재할 때까지 계속 이동하며 스캔
     page = 2
     while page <= MAX_PAGES_TO_TRY and _has_page(drv, page):
         try:
@@ -149,9 +139,7 @@ def fetch(subj:str, cls:str, headless:bool):
         return {"subject":subj,"cls":cls,"error":"행을 찾지 못했습니다."}
     return {"subject":subj,"cls":cls,"quota":quota,"current":current,"title":title,"prof":prof,"ratio":current/quota if quota else 0}
 
-# --- UI 부분 ---
-# (1) 막대 길이 고정: 모든 항목 동일 길이(예: 520px). 제목은 오른쪽에 별도 박스로 전체 표시.
-FIXED_BAR_PX = 520  # 필요 시 사용자 조정 가능
+FIXED_BAR_PX = 520
 
 def bar(t:str,curr:int,quota:int):
     pct = curr/quota*100 if quota else 0
@@ -172,7 +160,6 @@ def bar(t:str,curr:int,quota:int):
 
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
 
-# session state
 if "courses" not in st.session_state: st.session_state.courses=[]
 if "data" not in st.session_state: st.session_state.data={}
 if "pending" not in st.session_state: st.session_state.pending=[]
@@ -196,7 +183,6 @@ with st.sidebar:
     st.session_state.headless = st.checkbox("Headless 모드", st.session_state.headless)
     sort_ratio = st.checkbox("채워진 비율 순 배열", True)
 
-# queue fetch rather than blocking
 if add:
     s,c = subj.strip(), cls.strip()
     if not s or not c:
@@ -207,7 +193,6 @@ if add:
         st.session_state.pending.append((s,c))
         (getattr(st,"toast",None) or st.info)(f"{s}-{c} 데이터 로딩 시작")
 
-# autorefresh
 ar = getattr(st,"autorefresh",None) or getattr(st,"st_autorefresh",None)
 if auto and ar:
     ar(interval=interval*1000, key=auto_key)
@@ -240,7 +225,6 @@ def render():
 
 render()
 
-# after render, handle pending and refresh
 if st.session_state.pending:
     subj,cls = st.session_state.pending.pop(0)
     d = fetch(subj,cls,st.session_state.headless)
@@ -254,7 +238,6 @@ if st.session_state.pending:
         st.session_state.courses.append({"subject":subj,"cls":cls})
     if rerun: rerun()
 elif refresh_clicked or auto:
-    # full refresh
     for c in st.session_state.courses:
         k=(c["subject"],c["cls"])
         st.session_state.data[k] = fetch(*k, st.session_state.headless)
