@@ -35,9 +35,7 @@ def driver(headless=True):
 def _int(txt:str)->int:
     m = re.search(r"\d+", txt.replace(",",""))
     return int(m.group()) if m else 0
-
 DAY_ORDER = "월화수목금토일"
-
 def _format_time_caption(cell_text: str) -> str:
     if not cell_text:
         return ""
@@ -64,6 +62,7 @@ def _format_time_caption(cell_text: str) -> str:
     items = sorted(groups.items(), key=lambda kv: (min(DAY_ORDER.index(d) for d in kv[1]), start_minutes(kv[0])))
     return " / ".join([f"{'/'.join(days)} ({tm})" for tm, days in items])
 
+
 def open_search(drv, subj:str):
     drv.get("https://shine.snu.ac.kr/uni/sugang/cc/cc100.action")
     WebDriverWait(drv,TIMEOUT).until(EC.presence_of_element_located((By.ID,"srchOpenSchyy")))
@@ -82,36 +81,28 @@ def _scan_current_page(drv, cls:str):
     rows = drv.find_elements(By.CSS_SELECTOR,"table.tbl_basic tbody tr")
     for i, tr in enumerate(rows):
         tds = tr.find_elements(By.TAG_NAME,"td")
-        if len(tds)<=CURR_COL:
+        if not tds:
             continue
-                                        
         if any(td.text.strip()==cls for td in tds):
-            cap = tds[CAP_COL].text
+            cap = tds[CAP_COL].text if len(tds)>CAP_COL else ""
             m = re.search(r"\((\d+)\)", cap)
             quota = int(m.group(1)) if m else _int(cap)
-            current = _int(tds[CURR_COL].text)
-            title = tds[TITLE_COL].text.strip()
-            prof  = tds[PROF_COL].text.strip()
-                                                         
-            time_texts = []
-            if len(tds)>TIME_COL:
-                time_texts.append(tds[TIME_COL].text)
-                                                     
-            j = i + 1
+            current = _int(tds[CURR_COL].text) if len(tds)>CURR_COL else 0
+            title = tds[TITLE_COL].text.strip() if len(tds)>TITLE_COL else ""
+            prof  = tds[PROF_COL].text.strip() if len(tds)>PROF_COL else ""
+            buf = []
+            j = i
             while j < len(rows):
-                tds2 = rows[j].find_elements(By.TAG_NAME,"td")
-                if len(tds2)<=TIME_COL:
+                rtds = rows[j].find_elements(By.TAG_NAME,"td")
+                ttl  = rtds[TITLE_COL].text.strip() if len(rtds)>TITLE_COL else ""
+                if j>i and ttl:
                     break
-                title2 = tds2[TITLE_COL].text.strip()
-                                 
-                if title2:
-                    break
-                                            
-                ttxt = tds2[TIME_COL].text.strip()
-                if ttxt:
-                    time_texts.append(ttxt)
+                if len(rtds)>TIME_COL and rtds[TIME_COL].text.strip():
+                    buf.append(rtds[TIME_COL].text.strip())
+                else:
+                    buf.append(" ".join(td.text for td in rtds if td.text))
                 j += 1
-            time_caption = _format_time_caption(" ".join(time_texts))
+            time_caption = _format_time_caption(" ".join(buf))
             return quota,current,title,prof,time_caption
     return None
 
@@ -288,7 +279,8 @@ def render():
                     """,
                     unsafe_allow_html=True
                 )
-        
+
+                        
                 bar(r['current'], r['quota'])
 
                        
