@@ -219,40 +219,26 @@ def render():
         k=(r['subject'],r['cls']); safekey=_safe_id(*k); fav_on=k in st.session_state.favorites
         col=st.columns([2,8])
         with col[0]:
-            box=f"box_{safekey}"
-            st.markdown(f"<div id='{box}' style='position:relative;height:36px'></div>", unsafe_allow_html=True)
-            del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
-            fav_clicked = st.button("★" if fav_on else "☆", key=f"fav_{safekey}", help="즐겨찾기")
-            st.markdown(f"""
+            key=f"rx_{safekey}"
+            choice = st.radio("", ["×", "★" if fav_on else "☆"], horizontal=True, key=key, index=None)
+            st.markdown("""
 <style>
-#{box} + div.stButton, #{box} + div.stButton + div.stButton {{
-  display:inline-flex !important;
-  margin:0 !important;
-  vertical-align:middle !important;
-}}
-#{box} + div.stButton > button, #{box} + div.stButton + div.stButton > button {{
-  width:36px !important; height:36px !important; padding:0 !important;
-  border-radius:8px !important; font-size:18px !important; line-height:1 !important;
-}}
-#{box} + div.stButton > button {{
-  color:#111 !important; background:#fff !important; border:1px solid #ccc !important;
-}}
-#{marker} ~ div.stButton + div.stButton > button {{
-  color:{'#fb8c00' if fav_on else '#111'} !important;
-  background:{'#fff3e0' if fav_on else '#fff'} !important;
-  border:1px solid {'#ffe0b2' if fav_on else '#ccc'} !important;
-}}
-#{box} + div.stButton + div.stButton { position:relative !important; top:-36px !important; left:42px !important; }
+div[role="radiogroup"]{display:inline-flex !important; gap:0 !important;}
+div[role="radiogroup"] label{margin:0 !important}
+div[role="radiogroup"] input{display:none !important}
+div[role="radiogroup"] span{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:36px; height:36px; border-radius:8px; font-size:18px;
+  border:1px solid #ccc; background:#fff; color:#111;
+}
 </style>
 """, unsafe_allow_html=True)
-
-        # Actions
-        if del_clicked:
+        if choice == "×":
             st.session_state.courses=[c for c in st.session_state.courses if not (c['subject']==r['subject'] and c['cls']==r['cls'])]
             st.session_state.data.pop((r['subject'], r['cls']), None)
             st.session_state.favorites.discard(k); 
             if rerun: rerun()
-        if fav_clicked:
+        elif choice in ("☆","★"):
             if fav_on: st.session_state.favorites.discard(k)
             else: st.session_state.favorites.add(k)
             if rerun: rerun()
