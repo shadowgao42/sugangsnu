@@ -241,7 +241,7 @@ def render():
                 bar(r['current'], r['quota'])
 
                 # 추가 정보
-                status = "만석" if r['current']>=r['quota'] else "여석존재"
+                status = "만석" if r['current']>=r['quota'] else "여석있음"
                 st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
 
 render()
