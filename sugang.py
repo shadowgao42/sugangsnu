@@ -14,7 +14,8 @@ TIMEOUT = 10
 MAX_PAGES_TO_TRY = 20  # 안전장치: 최대 20페이지까지 시도
 
 CHROMEDRIVER = [
-    "/usr/bin/chromedriver",
+    "/usr/bi
+TIME_COL = 8  # 9번째 열(1-based) → 0-based indexn/chromedriver",
     "/usr/local/bin/chromedriver",
     "/usr/lib/chromium/chromedriver",
     shutil.which("chromedriver"),
@@ -35,6 +36,42 @@ def driver(headless=True):
 def _int(txt:str)->int:
     m = re.search(r"\d+", txt.replace(",",""))
     return int(m.group()) if m else 0
+
+DAY_ORDER = "월화수목금토일"
+
+def _format_time_caption(cell_text: str) -> str:
+    # 수업교시 셀 텍스트에서 '화(09:30~10:45)' 패턴들을 추출하여
+    # 동일 시간대끼리 요일을 묶어 '화/목 (09:30~10:45) / 수 (11:00~12:15)' 형태로 포맷한다.
+    if not cell_text:
+        return ""
+    s = cell_text.replace("\xa0", " ").strip()
+
+    # '요일(시작~끝)' 패턴 추출
+    matches = re.findall(r"([월화수목금토일])\s*[\(（]\s*(\d{2}:\d{2})\s*~\s*(\d{2}:\d{2})\s*[\)）]", s)
+    if not matches:
+        return ""
+
+    # 시간대별로 요일 묶기
+    groups = {}  # "09:30~10:45" -> ["화","목"]
+    for day, t1, t2 in matches:
+        tm = f"{t1}~{t2}"
+        groups.setdefault(tm, []).append(day)
+
+    # 요일 정렬
+    for tm in groups:
+        groups[tm].sort(key=lambda d: DAY_ORDER.index(d))
+
+    def start_minutes(tm: str) -> int:
+        hh, mm = map(int, tm.split("~")[0].split(":"))
+        return hh * 60 + mm
+
+    items = sorted(
+        groups.items(),
+        key=lambda kv: (min(DAY_ORDER.index(d) for d in kv[1]), start_minutes(kv[0]))
+    )
+    parts = [f"{'/'.join(days)} ({tm})" for tm, days in items]
+    return " / ".join(parts)
+
 
 def open_search(drv, subj:str):
     drv.get("https://shine.snu.ac.kr/uni/sugang/cc/cc100.action")
@@ -61,7 +98,8 @@ def _scan_current_page(drv, cls:str):
             current = _int(tds[CURR_COL].text)
             title = tds[TITLE_COL].text.strip()
             prof  = tds[PROF_COL].text.strip()
-            return quota,current,title,prof
+            time_caption = _format_time_caption(tds[TIME_COL].text)
+            return quota,current,title,prof,time_caption
     return None
 
 def _goto_page(drv, page:int):
@@ -103,20 +141,20 @@ def read_info(drv, cls:str):
         found = _scan_current_page(drv, cls)
         if found:
             return found
-    return None, None, None, None
+    return None, None, None, None, None
 
 def fetch(subj:str, cls:str, headless:bool):
     drv = driver(headless)
     try:
         open_search(drv, subj)
-        quota,current,title,prof = read_info(drv, cls)
+        quota,current,title,prof,time_caption = read_info(drv, cls)
     except Exception as e:
         return {"subject":subj,"cls":cls,"error":str(e)}
     finally:
         drv.quit()
     if quota is None:
         return {"subject":subj,"cls":cls,"error":"행을 찾지 못했습니다."}
-    return {"subject":subj,"cls":cls,"quota":quota,"current":current,"title":title,"prof":prof,"ratio":current/quota if quota else 0}
+    return {"subject":subj,"cls":cls,"quota":quota,"current":current,"title":title,"prof":prof,"time":time_caption,"ratio":current/quota if quota else 0}
 
 # --- UI 부분 ---
 # 1) 고정폭(반응형) 막대: 제목은 별도의 헤더(× 버튼 오른쪽)에 배치
