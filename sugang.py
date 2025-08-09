@@ -232,7 +232,7 @@ if _action and _qsubj and _qcls:
     if rerun: rerun()
 
 
-st.title(f"SNU 수강신청 실시간 모니터 ({DEFAULT_YEAR}학년도 {SEM_NAME[DEFAULT_SEM]})")
+st.title(f"SNU 수강신청 실시간 모니터[공사중] ({DEFAULT_YEAR}학년도 {SEM_NAME[DEFAULT_SEM]})")
 
 with st.sidebar:
     st.header("설정")
