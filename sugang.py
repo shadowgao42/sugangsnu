@@ -140,6 +140,22 @@ def bar(curr:int, quota:int):
 
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
 
+# --- Global CSS: keep column rows from stacking on mobile ---
+st.markdown(
+    """
+    <style>
+    /* Prevent Streamlit columns from stacking vertically on small screens */
+    [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; align-items: center !important; }
+    /* Make each column shrink instead of wrapping */
+    [data-testid="stHorizontalBlock"] > div { min-width: 0 !important; flex: 0 1 auto !important; }
+    /* Tweak Streamlit button to be compact */
+    .stButton button { padding: 0.2rem 0.5rem; line-height: 1; }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
 # session state
 if "courses" not in st.session_state: st.session_state.courses=[]
 if "data" not in st.session_state: st.session_state.data={}
