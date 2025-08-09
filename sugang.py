@@ -1,3 +1,4 @@
+
 import os, re, shutil, time, streamlit as st
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -119,10 +120,8 @@ def fetch(subj:str, cls:str, headless:bool):
     return {"subject":subj,"cls":cls,"quota":quota,"current":current,"title":title,"prof":prof,"ratio":current/quota if quota else 0}
 
 # --- UI 부분 ---
-# 1) 고정폭(반응형) 막대: 제목 길이에 무관하게 모든 항목 동일 너비를 사용
-#   - clamp(360px, 48vw, 640px)로 화면 너비에 맞춰 적당히 반응
-#   - 제목은 우측으로 따로 배치하여 잘리지 않도록 함
-def bar(t:str,curr:int,quota:int):
+# 1) 고정폭(반응형) 막대: 제목은 별도의 헤더(× 버튼 오른쪽)에 배치
+def bar(curr:int, quota:int):
     pct = curr/quota*100 if quota else 0
     color = "#e53935" if curr>=quota else "#1e88e5"
     st.markdown(
@@ -134,9 +133,8 @@ def bar(t:str,curr:int,quota:int):
                     {curr}/{quota}
                 </div>
             </div>
-            <div style='flex:1 1 auto; min-width:120px; font-weight:600; overflow-wrap:anywhere;'>{t}</div>
         </div>
-        """.format(pct=pct, color=color, curr=curr, quota=quota, t=t),
+        """.format(pct=pct, color=color, curr=curr, quota=quota),
         unsafe_allow_html=True
     )
 
@@ -193,18 +191,40 @@ def render():
     if sort_ratio:
         res.sort(key=lambda x:x.get("ratio",0) if x else 0, reverse=True)
     for r in res:
-        col = st.columns([1,9])
-        if col[0].button("×", key=f"del_{r['subject']}_{r['cls']}"):
-            st.session_state.courses=[c for c in st.session_state.courses if not (c['subject']==r['subject'] and c['cls']==r['cls'])]
-            st.session_state.data.pop((r['subject'],r['cls']),None)
-            if rerun: rerun()
-        with col[1]:
-            if r is None:
-                st.info("데이터 로딩 중...")
-            elif "error" in r:
-                st.error(f"{r['subject']}-{r['cls']}: {r['error']}")
-            else:
-                bar(r['title'],r['current'],r['quota'])
+        if r is None:
+            st.info("데이터 로딩 중...")
+            continue
+        if "error" in r:
+            st.error(f"{r['subject']}-{r['cls']}: {r['error']}")
+            continue
+
+        # === 카드 컨테이너 ===
+        card = st.container()
+        with card:
+            # 헤더: [× 버튼][제목] — 같은 구역, 같은 행
+            hcol = st.columns([0.06, 0.94])
+            delete_key = f"del_{r['subject']}_{r['cls']}"
+            if hcol[0].button("×", key=delete_key, help="삭제"):
+                st.session_state.courses=[c for c in st.session_state.courses if not (c['subject']==r['subject'] and c['cls']==r['cls'])]
+                st.session_state.data.pop((r['subject'],r['cls']),None)
+                if rerun: rerun()
+            with hcol[1]:
+                # 제목(과목명) — 버튼 바로 오른쪽
+                st.markdown(
+                    f"""
+                    <div style="display:flex;align-items:center;gap:8px;min-height:32px;">
+                        <div style="font-weight:700; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            {r['title']}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                # 본문: 막대
+                bar(r['current'], r['quota'])
+
+                # 추가 정보
                 status = "만석" if r['current']>=r['quota'] else "여석 있음"
                 st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
 
