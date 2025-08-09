@@ -123,7 +123,7 @@ def fetch(subj:str, cls:str, headless:bool):
 # 1) 고정폭(반응형) 막대: 제목은 별도의 헤더(× 버튼 오른쪽)에 배치
 def bar(curr:int, quota:int):
     pct = curr/quota*100 if quota else 0
-    color = "#e53935" if curr>=quota else "#1e88e5"
+    color = "#f8b4b4" if curr >= quota else "#a5d8ff"
     st.markdown(
         """
         <div style='display:flex;align-items:center;gap:12px; width:100%; margin-left:4px;'>
