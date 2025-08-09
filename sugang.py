@@ -173,7 +173,7 @@ def fetch(subj:str, cls:str, headless:bool):
 # ================= UI ==================
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
 
-# CSS
+# CSS (bars + control forms)
 st.markdown("""
 <style>
 .bar-track {
@@ -192,12 +192,6 @@ st.markdown("""
 }
 .course-title { font-weight: 600; }
 @media (max-width: 640px) { .bar-track { width: 100% !important; } }
-
-/* inline zero-gap anchor buttons */
-.btnrow{display:inline-flex;align-items:center;gap:0}
-.sqbtn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;
-  font-size:18px;line-height:1;text-decoration:none;border:1px solid #ccc;color:#111;background:#fff}
-.sqbtn.fav.on{color:#fb8c00;background:#fff3e0;border-color:#ffe0b2}
 </style>
 """, unsafe_allow_html=True)
 
@@ -228,36 +222,6 @@ def _safe_id(*parts):
     s = "_".join(str(p) for p in parts)
     return re.sub(r"[^0-9a-zA-Z_-]+", "_", s)
 
-# ---- URL query action handler (for zero-gap inline controls) ----
-def _qp_get(name):
-    try:
-        v = st.query_params.get(name)
-        return v if isinstance(v, str) else (v[0] if v else None)
-    except Exception:
-        v = st.experimental_get_query_params().get(name, [None])
-        return v[0]
-
-_action = _qp_get("action")
-_qsubj  = _qp_get("subj")
-_qcls   = _qp_get("cls")
-if _action and _qsubj and _qcls:
-    k = (_qsubj, _qcls)
-    if _action == "del":
-        st.session_state.courses = [c for c in st.session_state.courses if not (c["subject"] == _qsubj and c["cls"] == _qcls)]
-        st.session_state.data.pop(k, None)
-        st.session_state.favorites.discard(k)
-    elif _action == "fav":
-        if k in st.session_state.favorites:
-            st.session_state.favorites.discard(k)
-        else:
-            st.session_state.favorites.add(k)
-    # clear query and rerun
-    try:
-        st.query_params.clear()
-    except Exception:
-        st.experimental_set_query_params()
-    if rerun: rerun()
-
 # queue fetch rather than blocking
 if add:
     s, c = subj.strip(), cls.strip()
@@ -274,7 +238,7 @@ ar = getattr(st, "autorefresh", None) or getattr(st, "st_autorefresh", None)
 if auto and ar:
     ar(interval=interval*1000, key=auto_key)
 
-# bar
+# progress bar
 FIXED_BAR_PX = 520
 def bar(curr:int, quota:int, filled_color:str):
     pct = curr / quota * 100 if quota else 0
@@ -318,23 +282,48 @@ def render():
         col = st.columns([2, 8])
         k = (r['subject'], r['cls'])
         safekey = _safe_id(r['subject'], r['cls'])
-        fav_on = k in st.session_state.favorites
-        fav_label = "★" if fav_on else "☆"
 
-        # Controls (X + ★, zero-gap anchors; prevent new tab and reload same tab)
+        # -------- Controls: st.form with two submit buttons, forced inline with zero gap --------
         with col[0]:
-            sj = r['subject'].replace("'", "\'")
-            cl = r['cls'].replace("'", "\'")
+            fav_on = k in st.session_state.favorites
             wrap_id = f"ctl_{safekey}"
-            st.markdown(f'''
-<div id="{wrap_id}" class="btnrow">
-  <a class="sqbtn del" href="#"
-     onclick="const q=new URLSearchParams(window.location.search);q.set('action','del');q.set('subj','{sj}');q.set('cls','{cl}');history.replaceState(null,'','?'+q.toString());location.reload();return false;">×</a><a class="sqbtn fav {'on' if fav_on else ''}" href="#"
-     onclick="const q=new URLSearchParams(window.location.search);q.set('action','fav');q.set('subj','{sj}');q.set('cls','{cl}');history.replaceState(null,'','?'+q.toString());location.reload();return false;">{fav_label}</a>
-</div>
-''', unsafe_allow_html=True)
+            st.markdown(f"<div id='{wrap_id}'>", unsafe_allow_html=True)
+            with st.form(f"form_{safekey}", clear_on_submit=False):
+                del_clicked = st.form_submit_button("×")
+                fav_clicked = st.form_submit_button("★" if fav_on else "☆")
+            st.markdown(f"""
+<style>
+#{wrap_id} form {{ display:inline-flex; align-items:center; gap:0 !important; }}
+#{wrap_id} .stButton {{ display:inline-block !important; margin:0 !important; }}
+#{wrap_id} .stButton>button {{
+  width:36px !important; height:36px !important; padding:0 !important;
+  border-radius:8px !important; font-size:18px !important; line-height:1 !important;
+  border:1px solid #ccc !important; background:#fff !important; color:#111 !important;
+}}
+/* second button (favorite) coloring depending on state */
+#{wrap_id} .stButton:nth-of-type(2)>button {{
+  border-color: {('#ffe0b2' if fav_on else '#ccc')} !important;
+  background: {('#fff3e0' if fav_on else '#fff')} !important;
+  color: {('#fb8c00' if fav_on else '#111')} !important;
+}}
+</style>
+""", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
-        # Info
+        # Actions after submit
+        if del_clicked:
+            st.session_state.courses = [c for c in st.session_state.courses if not (c['subject'] == r['subject'] and c['cls'] == r['cls'])]
+            st.session_state.data.pop((r['subject'], r['cls']), None)
+            st.session_state.favorites.discard(k)
+            if rerun: rerun()
+        if fav_clicked:
+            if fav_on:
+                st.session_state.favorites.discard(k)
+            else:
+                st.session_state.favorites.add(k)
+            if rerun: rerun()
+
+        # -------- Info --------
         with col[1]:
             status = "만석" if r['current'] >= r['quota'] else "여석 있음"
             color = "#ff8a80" if r['current'] >= r['quota'] else "#81d4fa"
