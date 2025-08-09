@@ -90,8 +90,8 @@ def _goto_page(drv, page:int):
     try:
         drv.execute_script("fnGotoPage(arguments[0]);", str(page))
     except Exception:
-        link_xpath = ('//a[contains(@href, "fnGotoPage({0})") or contains(@href, "fnGotoPage(\'{0}\')") '
-                      'or contains(@href, "fnGotoPage(\\\"{0}\\\")")]').format(page)
+        link_xpath = ('//a[contains(@href, "fnGotoPage({0})") or contains(@href, "fnGotoPage(\\'{0}\\')") '
+                      'or contains(@href, "fnGotoPage(\\\\\\"{0}\\\\\\")")]').format(page)
         try:
             link = drv.find_element(By.XPATH, link_xpath)
             link.click()
@@ -139,31 +139,43 @@ def fetch(subj:str, cls:str, headless:bool):
         return {"subject":subj,"cls":cls,"error":"행을 찾지 못했습니다."}
     return {"subject":subj,"cls":cls,"quota":quota,"current":current,"title":title,"prof":prof,"ratio":current/quota if quota else 0}
 
-FIXED_BAR_PX = 520
-
-def bar(t:str,curr:int,quota:int):
-    pct = curr/quota*100 if quota else 0
-    width_px = FIXED_BAR_PX
-    color = "#ff8a80" if curr>=quota else "#81d4fa"
-    html = f"""
-    <div style='display:flex;align-items:center;gap:12px;width:100%;'>
-        <div style='width:{width_px}px;position:relative;height:24px;background:#eee;border-radius:8px;overflow:hidden;flex:0 0 auto;'>
-            <div style='position:absolute;top:0;left:0;bottom:0;width:{pct:.2f}%;background:{color};'></div>
-            <div style='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;'>
-                {curr}/{quota}
-            </div>
-        </div>
-        <div style='flex:1 1 auto;min-width:140px;font-weight:600;word-break:keep-all;overflow-wrap:anywhere;'>{t}</div>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
-
+# ================= UI ==================
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
 
+# Inject CSS for bar + mobile layout
+st.markdown("""
+<style>
+.bar-track {
+  width: var(--bar-width, 520px);
+  position: relative;
+  height: 24px;
+  background: #eee;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.bar-fill {
+  position:absolute; top:0; left:0; bottom:0;
+}
+.bar-center {
+  position:absolute; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:600; font-size:13px;
+}
+.course-title {
+  font-weight: 600;
+}
+@media (max-width: 640px) {
+  .bar-track { width: 100% !important; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+# session state
 if "courses" not in st.session_state: st.session_state.courses=[]
 if "data" not in st.session_state: st.session_state.data={}
 if "pending" not in st.session_state: st.session_state.pending=[]
 if "headless" not in st.session_state: st.session_state.headless=True
+if "favorites" not in st.session_state: st.session_state.favorites=set()
 
 rerun = getattr(st,"rerun",None) or getattr(st,"experimental_rerun",None)
 auto_key="__auto_refresh"
@@ -183,6 +195,12 @@ with st.sidebar:
     st.session_state.headless = st.checkbox("Headless 모드", st.session_state.headless)
     sort_ratio = st.checkbox("채워진 비율 순 배열", True)
 
+# Helper to sanitize id for CSS
+def _safe_id(*parts):
+    s = "_".join(str(p) for p in parts)
+    return re.sub(r'[^0-9a-zA-Z_-]+', '_', s)
+
+# queue fetch rather than blocking
 if add:
     s,c = subj.strip(), cls.strip()
     if not s or not c:
@@ -193,38 +211,87 @@ if add:
         st.session_state.pending.append((s,c))
         (getattr(st,"toast",None) or st.info)(f"{s}-{c} 데이터 로딩 시작")
 
+# autorefresh
 ar = getattr(st,"autorefresh",None) or getattr(st,"st_autorefresh",None)
 if auto and ar:
     ar(interval=interval*1000, key=auto_key)
+
+# Bar: only the bar itself (title separate), fixed width via CSS variable
+FIXED_BAR_PX = 520
+def bar(curr:int, quota:int, filled_color:str):
+    pct = curr/quota*100 if quota else 0
+    html = f"""
+    <div class='bar-track' style='--bar-width:{FIXED_BAR_PX}px'>
+        <div class='bar-fill' style='width:{pct:.2f}%; background:{filled_color};'></div>
+        <div class='bar-center'>{curr}/{quota}</div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
 def render():
     if not st.session_state.courses:
         st.info("사이드바에서 과목을 등록하세요.")
         return
+
+    # Build current results in a list
     res = []
     for c in st.session_state.courses:
         k=(c["subject"],c["cls"])
         res.append(st.session_state.data.get(k))
+
+    # Sort by ratio if requested (stable)
     if sort_ratio:
         res.sort(key=lambda x:x.get("ratio",0) if x else 0, reverse=True)
+
+    # Stable bring favorites to top (preserve prior order within groups)
+    favs = st.session_state.favorites
+    res.sort(key=lambda x: 0 if (x and (x['subject'], x['cls']) in favs) else 1)
+
     for r in res:
-        col = st.columns([1,9])
-        if col[0].button("×", key=f"del_{r['subject']}_{r['cls']}"):
+        if r is None:
+            st.info("데이터 로딩 중...")
+            continue
+
+        # Columns: [X][★][Info]
+        col = st.columns([1,1,8])
+        k = (r['subject'], r['cls'])
+        safekey = _safe_id(r['subject'], r['cls'])
+
+        # Delete button
+        if col[0].button("×", key=f"del_{safekey}"):
             st.session_state.courses=[c for c in st.session_state.courses if not (c['subject']==r['subject'] and c['cls']==r['cls'])]
             st.session_state.data.pop((r['subject'],r['cls']),None)
+            st.session_state.favorites.discard(k)
             if rerun: rerun()
+
+        # Favorite toggle (colored star)
+        fav_on = k in st.session_state.favorites
+        wrap_id = f"favwrap_{safekey}"
         with col[1]:
-            if r is None:
-                st.info("데이터 로딩 중...")
-            elif "error" in r:
-                st.error(f"{r['subject']}-{r['cls']}: {r['error']}")
-            else:
-                bar(r['title'],r['current'],r['quota'])
-                status = "만석" if r['current']>=r['quota'] else "여석 있음"
-                st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
+            st.markdown(f"<div id='{wrap_id}'>", unsafe_allow_html=True)
+            clicked = st.button("★", key=f"fav_{safekey}", help="즐겨찾기 토글")
+            # Apply color via CSS based on current state
+            star_color = "#fb8c00" if fav_on else "#111111"  # orange vs black
+            st.markdown(f"<style>#{wrap_id} button {{ color: {star_color}; font-size:18px; }}</style>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+            if clicked:
+                if fav_on:
+                    st.session_state.favorites.discard(k)
+                else:
+                    st.session_state.favorites.add(k)
+                if rerun: rerun()
+
+        # Title + Bar (mobile: title next to buttons, bar below full width due to media query)
+        with col[2]:
+            status = "만석" if r['current']>=r['quota'] else "여석 있음"
+            color = "#ff8a80" if r['current']>=r['quota'] else "#81d4fa"  # soft tones
+            st.markdown(f"<div class='course-title'>{r['title']}</div>", unsafe_allow_html=True)
+            bar(r['current'], r['quota'], color)
+            st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
 
 render()
 
+# after render, handle pending and refresh
 if st.session_state.pending:
     subj,cls = st.session_state.pending.pop(0)
     d = fetch(subj,cls,st.session_state.headless)
