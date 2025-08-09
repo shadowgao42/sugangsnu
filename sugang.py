@@ -144,7 +144,7 @@ FIXED_BAR_PX = 520
 def bar(t:str,curr:int,quota:int):
     pct = curr/quota*100 if quota else 0
     width_px = FIXED_BAR_PX
-    color = "#e53935" if curr>=quota else "#1e88e5"
+    color = "#ef9a9a" if curr>=quota else "#90caf9"
     html = f"""
     <div style='display:flex;align-items:center;gap:12px;width:100%;'>
         <div style='width:{width_px}px;position:relative;height:24px;background:#eee;border-radius:8px;overflow:hidden;flex:0 0 auto;'>
