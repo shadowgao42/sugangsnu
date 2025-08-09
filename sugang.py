@@ -126,7 +126,7 @@ def bar(curr:int, quota:int):
     color = "#e53935" if curr>=quota else "#1e88e5"
     st.markdown(
         """
-        <div style='display:flex;align-items:center;gap:12px; width:100%;'>
+        <div style='display:flex;align-items:center;gap:12px; width:100%; margin-left:4px;'>
             <div style='width:clamp(360px, 48vw, 640px); position:relative; height:24px; background:#eee; border-radius:8px; overflow:hidden; flex:0 0 auto;'>
                 <div style='position:absolute; top:0; left:0; bottom:0; width:{pct:.2f}%; background:{color};'></div>
                 <div style='position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:13px;'>
