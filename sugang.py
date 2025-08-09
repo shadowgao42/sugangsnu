@@ -189,7 +189,13 @@ st.markdown("""
   font-weight:600; font-size:13px;
 }
 .course-title { font-weight: 600; }
-@media (max-width: 640px) { .bar-track { width: 100% !important; } }
+.desktop-title { display:block; }
+.mobile-title { display:none; }
+@media (max-width: 640px) {
+  .bar-track { width: 100% !important; }
+  .desktop-title { display:none; }
+  .mobile-title { display:block; margin-top:4px; font-weight:600; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -276,16 +282,50 @@ def render():
             st.info("데이터 로딩 중...")
             continue
 
-        # Columns: [X][★][Info]
-        col = st.columns([1,1,8])
+        # Two main columns: [buttons][info]
+        col = st.columns([2,8])
         k = (r['subject'], r['cls'])
         safekey = _safe_id(r['subject'], r['cls'])
 
-        # --- Delete button (X) ---
-        del_wrap_id = f"delwrap_{safekey}"
+        # --- Button row with tight spacing ---
         with col[0]:
-            st.markdown(f"<div id='{del_wrap_id}'>", unsafe_allow_html=True)
-            del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
+            btnrow_id = f"btnrow_{safekey}"
+            st.markdown(f"<div id='{btnrow_id}'>", unsafe_allow_html=True)
+            b1, b2 = st.columns([1,1])
+            with b1:
+                del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
+            with b2:
+                fav_on = k in st.session_state.favorites
+                fav_label = "★" if fav_on else "☆"
+                fav_clicked = st.button(fav_label, key=f"fav_{safekey}", help="즐겨찾기 토글")
+            # CSS to reduce gap and style buttons identically
+            star_color = "#fb8c00" if fav_on else "#111111"
+            star_bg    = "#fff3e0" if fav_on else "#ffffff"
+            star_bd    = "#ffe0b2" if fav_on else "#cccccc"
+            st.markdown(
+                f"""
+                <style>
+                #{btnrow_id} [data-testid="column"] {{
+                    padding-left: 2px !important;
+                    padding-right: 2px !important;
+                }}
+                #{btnrow_id} button {{
+                    width: 36px !important; height: 36px !important; padding: 0 !important;
+                    border-radius: 8px !important; font-size: 18px !important; line-height: 1 !important;
+                }}
+                #{btnrow_id} button[kind="secondary"] {{ border: 1px solid #ccc !important; background:#fff !important; color:#111 !important; }}
+                /* Right button (favorite) dynamic look */
+                #{btnrow_id} button[data-testid="baseButton-secondary"]:last-child {{
+                    color: {star_color} !important;
+                    background: {star_bg} !important;
+                    border: 1px solid {star_bd} !important;
+                }}
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            # Mobile title (next to buttons area on small screens)
+            st.markdown(f"<div class='mobile-title'>{r['title']}</div>", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
         if del_clicked:
@@ -294,44 +334,6 @@ def render():
             st.session_state.favorites.discard(k)
             if rerun: rerun()
 
-        # --- Favorite toggle (★/☆) ---
-        fav_on = k in st.session_state.favorites
-        fav_wrap_id = f"favwrap_{safekey}"
-        fav_label = "★" if fav_on else "☆"  # shape also changes
-        with col[1]:
-            st.markdown(f"<div id='{fav_wrap_id}'>", unsafe_allow_html=True)
-            fav_clicked = st.button(fav_label, key=f"fav_{safekey}", help="즐겨찾기 토글")
-            # Style both buttons identically; favorite gets dynamic color/bg/border
-            star_color = "#fb8c00" if fav_on else "#111111"
-            star_bg    = "#fff3e0" if fav_on else "#ffffff"
-            star_bd    = "#ffe0b2" if fav_on else "#cccccc"
-            st.markdown(f"""
-                <style>
-                /* identical sizing */
-                #{del_wrap_id} button, #{fav_wrap_id} button {{
-                    width: 36px !important;
-                    height: 36px !important;
-                    padding: 0 !important;
-                    border-radius: 8px !important;
-                    font-size: 18px !important;
-                    line-height: 1 !important;
-                }}
-                /* delete button look */
-                #{del_wrap_id} button {{
-                    color: #111 !important;
-                    background: #fff !important;
-                    border: 1px solid #ccc !important;
-                }}
-                /* favorite button dynamic look */
-                #{fav_wrap_id} button {{
-                    color: {star_color} !important;
-                    background: {star_bg} !important;
-                    border: 1px solid {star_bd} !important;
-                }}
-                </style>
-""", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
-
         if fav_clicked:
             if fav_on:
                 st.session_state.favorites.discard(k)
@@ -339,11 +341,12 @@ def render():
                 st.session_state.favorites.add(k)
             if rerun: rerun()
 
-        # Title + Bar (mobile: title near buttons, bar below full width via CSS)
-        with col[2]:
+        # --- Info area ---
+        with col[1]:
             status = "만석" if r['current'] >= r['quota'] else "여석 있음"
             color = "#ff8a80" if r['current'] >= r['quota'] else "#81d4fa"
-            st.markdown(f"<div class='course-title'>{r['title']}</div>", unsafe_allow_html=True)
+            # Desktop title shown here; hidden on mobile via CSS
+            st.markdown(f"<div class='desktop-title course-title'>{r['title']}</div>", unsafe_allow_html=True)
             bar(r['current'], r['quota'], color)
             st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
 
