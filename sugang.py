@@ -5,13 +5,14 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+# ================= Config =================
 DEFAULT_YEAR = 2025
 DEFAULT_SEM  = 3
 SEM_VALUE = {1: "U000200001U000300001", 2: "U000200001U000300002", 3: "U000200002U000300001", 4: "U000200002U000300002"}
 SEM_NAME  = {1: "1학기", 2: "여름학기", 3: "2학기", 4: "겨울학기"}
 TITLE_COL, CAP_COL, CURR_COL, PROF_COL = 6, 13, 14, 11
 TIMEOUT = 10
-MAX_PAGES_TO_TRY = 100
+MAX_PAGES_TO_TRY = 100  # 페이지네이션 최대 시도 페이지
 
 CHROMEDRIVER = [
     "/usr/bin/chromedriver",
@@ -20,6 +21,7 @@ CHROMEDRIVER = [
     shutil.which("chromedriver"),
 ]
 
+# ================ Driver ==================
 def driver(headless=True):
     path = next((p for p in CHROMEDRIVER if p and os.path.exists(p)), None)
     if not path:
@@ -40,10 +42,12 @@ def open_search(drv, subj:str):
     drv.get("https://shine.snu.ac.kr/uni/sugang/cc/cc100.action")
     WebDriverWait(drv,TIMEOUT).until(EC.presence_of_element_located((By.ID,"srchOpenSchyy")))
     drv.execute_script(
-        """document.getElementById('srchOpenSchyy').value = arguments[0];
-document.getElementById('srchOpenShtm').value  = arguments[1];
-document.getElementById('srchSbjtCd').value    = arguments[2];
-fnInquiry();""", str(DEFAULT_YEAR), SEM_VALUE[DEFAULT_SEM], subj.strip()
+        """
+        document.getElementById('srchOpenSchyy').value = arguments[0];
+        document.getElementById('srchOpenShtm').value  = arguments[1];
+        document.getElementById('srchSbjtCd').value    = arguments[2];
+        fnInquiry();
+        """, str(DEFAULT_YEAR), SEM_VALUE[DEFAULT_SEM], subj.strip()
     )
 
 def _scan_current_page(drv, cls:str):
@@ -64,20 +68,23 @@ def _scan_current_page(drv, cls:str):
 
 def _has_page(drv, page:int)->bool:
     return drv.execute_script(
-        """const p = String(arguments[0]);
-const patterns = [
-  "fnGotoPage(" + p + ")",
-  "fnGotoPage('" + p + "')",
-  'fnGotoPage("' + p + '")',
-  "javascript:fnGotoPage(" + p + ")",
-  "javascript:fnGotoPage('" + p + "')",
-  'javascript:fnGotoPage("' + p + '")'
-];
-return Array.from(document.querySelectorAll('a[href]'))
-  .some(a => patterns.includes(a.getAttribute('href')));""", str(page)
+        """
+        const p = String(arguments[0]);
+        const patterns = [
+            "fnGotoPage(" + p + ")",
+            "fnGotoPage('" + p + "')",
+            'fnGotoPage("' + p + '")',
+            "javascript:fnGotoPage(" + p + ")",
+            "javascript:fnGotoPage('" + p + "')",
+            'javascript:fnGotoPage("' + p + '")'
+        ];
+        return Array.from(document.querySelectorAll('a[href]'))
+          .some(a => patterns.includes(a.getAttribute('href')));
+        """, str(page)
     ) or False
 
 def _goto_page(drv, page:int):
+    # snapshot old tbody
     try:
         tbody = WebDriverWait(drv, TIMEOUT).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "table.tbl_basic tbody"))
@@ -86,6 +93,7 @@ def _goto_page(drv, page:int):
     except Exception:
         old_html = None
 
+    # try direct call
     direct_ok = True
     try:
         drv.execute_script("fnGotoPage(arguments[0]);", str(page))
@@ -93,20 +101,23 @@ def _goto_page(drv, page:int):
         direct_ok = False
 
     if not direct_ok:
+        # fallback: find anchor by href variants and click via JS
         clicked = drv.execute_script(
-            """const p = String(arguments[0]);
-const hrefs = [
-  "javascript:fnGotoPage(" + p + ");",
-  "javascript:fnGotoPage('" + p + "');",
-  'javascript:fnGotoPage("' + p + '");',
-  "fnGotoPage(" + p + ");",
-  "fnGotoPage('" + p + "');",
-  'fnGotoPage("' + p + '");'
-];
-const a = Array.from(document.querySelectorAll('a[href]'))
-  .find(x => hrefs.includes(x.getAttribute('href')));
-if (a) { a.click(); return true; }
-return false;""", str(page)
+            """
+            const p = String(arguments[0]);
+            const hrefs = [
+              "javascript:fnGotoPage(" + p + ");",
+              "javascript:fnGotoPage('" + p + "');",
+              'javascript:fnGotoPage("' + p + '");',
+              "fnGotoPage(" + p + ");",
+              "fnGotoPage('" + p + "');",
+              'fnGotoPage("' + p + '");'
+            ];
+            const a = Array.from(document.querySelectorAll('a[href]'))
+              .find(x => hrefs.includes(x.getAttribute('href')));
+            if (a) { a.click(); return true; }
+            return false;
+            """, str(page)
         )
         if not clicked:
             raise RuntimeError("해당 페이지 링크를 찾지 못했습니다.")
@@ -162,6 +173,7 @@ def fetch(subj:str, cls:str, headless:bool):
 # ================= UI ==================
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
 
+# CSS
 st.markdown("""
 <style>
 .bar-track {
@@ -180,14 +192,13 @@ st.markdown("""
 }
 .course-title { font-weight: 600; }
 @media (max-width: 640px) { .bar-track { width: 100% !important; } }
-</style>
-<style>
+
+/* inline zero-gap anchor buttons */
 .btnrow{display:inline-flex;align-items:center;gap:0}
 .sqbtn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;
   font-size:18px;line-height:1;text-decoration:none;border:1px solid #ccc;color:#111;background:#fff}
 .sqbtn.fav.on{color:#fb8c00;background:#fff3e0;border-color:#ffe0b2}
 </style>
-
 """, unsafe_allow_html=True)
 
 # session state
@@ -199,13 +210,29 @@ if "favorites" not in st.session_state: st.session_state.favorites = set()
 
 rerun = getattr(st, "rerun", None) or getattr(st, "experimental_rerun", None)
 auto_key = "__auto_refresh"
+
+st.title(f"SNU 수강신청 실시간 모니터 ({DEFAULT_YEAR}학년도 {SEM_NAME[DEFAULT_SEM]})")
+
+with st.sidebar:
+    st.header("설정")
+    subj = st.text_input("과목코드", placeholder="예시: 445.206")
+    cls  = st.text_input("분반", placeholder="예시: 002")
+    add  = st.button("등록", use_container_width=True)
+    refresh_clicked = st.button("🔄 수동 새로고침", use_container_width=True)
+    auto = st.checkbox("자동 새로고침(과목 등록 시 해제 권장)", False)
+    interval = st.slider("새로고침(초)", 1, 10, 5)
+    st.session_state.headless = st.checkbox("Headless 모드", st.session_state.headless)
+    sort_ratio = st.checkbox("채워진 비율 순 배열", True)
+
+def _safe_id(*parts):
+    s = "_".join(str(p) for p in parts)
+    return re.sub(r"[^0-9a-zA-Z_-]+", "_", s)
+
 # ---- URL query action handler (for zero-gap inline controls) ----
 def _qp_get(name):
     try:
         v = st.query_params.get(name)
-        if isinstance(v, list):
-            return v[0] if v else None
-        return v
+        return v if isinstance(v, str) else (v[0] if v else None)
     except Exception:
         v = st.experimental_get_query_params().get(name, [None])
         return v[0]
@@ -224,31 +251,14 @@ if _action and _qsubj and _qcls:
             st.session_state.favorites.discard(k)
         else:
             st.session_state.favorites.add(k)
-    # clear query params and rerun
+    # clear query and rerun
     try:
         st.query_params.clear()
     except Exception:
         st.experimental_set_query_params()
     if rerun: rerun()
 
-
-st.title(f"SNU 수강신청 실시간 모니터[공사중] ({DEFAULT_YEAR}학년도 {SEM_NAME[DEFAULT_SEM]})")
-
-with st.sidebar:
-    st.header("설정")
-    subj = st.text_input("과목코드", placeholder="예시: 445.206")
-    cls  = st.text_input("분반", placeholder="예시: 002")
-    add  = st.button("등록", use_container_width=True)
-    refresh_clicked = st.button("🔄 수동 새로고침", use_container_width=True)
-    auto = st.checkbox("자동 새로고침(과목 등록 시 해제 권장)", False)
-    interval = st.slider("새로고침(초)", 1, 10, 5)
-    st.session_state.headless = st.checkbox("Headless 모드", st.session_state.headless)
-    sort_ratio = st.checkbox("채워진 비율 순 배열", True)
-
-def _safe_id(*parts):
-    s = "_".join(str(p) for p in parts)
-    return re.sub(r"[^0-9a-zA-Z_-]+", "_", s)
-
+# queue fetch rather than blocking
 if add:
     s, c = subj.strip(), cls.strip()
     if not s or not c:
@@ -259,10 +269,12 @@ if add:
         st.session_state.pending.append((s, c))
         (getattr(st, "toast", None) or st.info)(f"{s}-{c} 데이터 로딩 시작")
 
+# autorefresh
 ar = getattr(st, "autorefresh", None) or getattr(st, "st_autorefresh", None)
 if auto and ar:
     ar(interval=interval*1000, key=auto_key)
 
+# bar
 FIXED_BAR_PX = 520
 def bar(curr:int, quota:int, filled_color:str):
     pct = curr / quota * 100 if quota else 0
@@ -279,6 +291,7 @@ def render():
         st.info("사이드바에서 과목을 등록하세요.")
         return
 
+    # Build (original_index, result) for stable sorting
     items = []
     for i, c in enumerate(st.session_state.courses):
         k = (c["subject"], c["cls"])
@@ -308,17 +321,20 @@ def render():
         fav_on = k in st.session_state.favorites
         fav_label = "★" if fav_on else "☆"
 
+        # Controls (X + ★, zero-gap anchors; prevent new tab and reload same tab)
         with col[0]:
-            from urllib.parse import quote_plus
-            href_del = f"?action=del&subj={quote_plus(r['subject'])}&cls={quote_plus(r['cls'])}"
-            href_fav = f"?action=fav&subj={quote_plus(r['subject'])}&cls={quote_plus(r['cls'])}"
+            sj = r['subject'].replace("'", "\'")
+            cl = r['cls'].replace("'", "\'")
             wrap_id = f"ctl_{safekey}"
             st.markdown(f'''
 <div id="{wrap_id}" class="btnrow">
-  <a class="sqbtn del" href="{href_del}">×</a><a class="sqbtn fav {'on' if fav_on else ''}" href="{href_fav}">{fav_label}</a>
+  <a class="sqbtn del" href="#"
+     onclick="const q=new URLSearchParams(window.location.search);q.set('action','del');q.set('subj','{sj}');q.set('cls','{cl}');history.replaceState(null,'','?'+q.toString());location.reload();return false;">×</a><a class="sqbtn fav {'on' if fav_on else ''}" href="#"
+     onclick="const q=new URLSearchParams(window.location.search);q.set('action','fav');q.set('subj','{sj}');q.set('cls','{cl}');history.replaceState(null,'','?'+q.toString());location.reload();return false;">{fav_label}</a>
 </div>
 ''', unsafe_allow_html=True)
 
+        # Info
         with col[1]:
             status = "만석" if r['current'] >= r['quota'] else "여석 있음"
             color = "#ff8a80" if r['current'] >= r['quota'] else "#81d4fa"
@@ -328,17 +344,12 @@ def render():
 
 render()
 
+# after render, handle pending and refresh
 if st.session_state.pending:
     subj, cls = st.session_state.pending.pop(0)
     d = fetch(subj, cls, st.session_state.headless)
-    if "error" in d and "행을 찾지 못했습니다" in d["error"]:
-        (getattr(st, "toast", None) or st.warning)(f"{subj}-{cls} 과목 정보를 찾지 못했습니다.")
-    elif "error" in d:
-        st.session_state.data[(subj, cls)] = d
-        st.session_state.courses.append({"subject":subj, "cls":cls})
-    else:
-        st.session_state.data[(subj, cls)] = d
-        st.session_state.courses.append({"subject":subj, "cls":cls})
+    st.session_state.data[(subj, cls)] = d
+    st.session_state.courses.append({"subject":subj, "cls":cls})
     if rerun: rerun()
 elif 'refresh_clicked' in locals() and (refresh_clicked or auto):
     for c in st.session_state.courses:
