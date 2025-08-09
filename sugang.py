@@ -229,7 +229,7 @@ def render():
                 st.markdown(
                     f"""
                     <div style="display:flex;align-items:center;gap:8px;min-height:32px;">
-                        <div style="font-weight:700; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        <div style="margin-left:4px; font-weight:700; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                             {r['title']}
                         </div>
                     </div>
