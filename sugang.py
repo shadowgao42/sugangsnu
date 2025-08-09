@@ -164,6 +164,9 @@ st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wi
 
 st.markdown("""
 <style>
+/* Remove all column gaps to ensure X and ★ stick together */
+div[data-testid="stHorizontalBlock"] { gap: 0 !important; }
+
 .bar-track {
   width: var(--bar-width, 520px);
   position: relative;
@@ -179,13 +182,13 @@ st.markdown("""
   font-weight:600; font-size:13px;
 }
 .course-title { font-weight: 600; }
-/* Zero-gap control wrap */
-.control-wrap { display:flex; align-items:center; gap:0 !important; }
-.control-wrap .stButton { margin:0 !important; display:flex !important; }
-.control-wrap .stButton > button {
+
+/* Square button styling */
+.square-btn > button {
   width:36px !important; height:36px !important; padding:0 !important;
   border-radius:8px !important; font-size:18px !important; line-height:1 !important;
 }
+
 @media (max-width: 640px) { .bar-track { width: 100% !important; } }
 </style>
 """, unsafe_allow_html=True)
@@ -270,36 +273,36 @@ def render():
             st.info("데이터 로딩 중...")
             continue
 
-        col = st.columns([2, 8])
+        # Three columns: [X][★][Info], gap is forced to 0 globally
+        col = st.columns([1, 1, 8])
         k = (r['subject'], r['cls'])
         safekey = _safe_id(r['subject'], r['cls'])
 
         fav_on = k in st.session_state.favorites
         fav_label = "★" if fav_on else "☆"
 
+        # X button
         with col[0]:
-            wrap_id = f"ctl_{safekey}"
-            st.markdown(f"<div id='{wrap_id}' class='control-wrap'>", unsafe_allow_html=True)
-            # DELETE
+            del_wrap = f"delwrap_{safekey}"
+            st.markdown(f"<div id='{del_wrap}' class='square-btn'>", unsafe_allow_html=True)
             del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
-            # FAVORITE
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # ★ button
+        with col[1]:
+            fav_wrap = f"favwrap_{safekey}"
+            st.markdown(f"<div id='{fav_wrap}' class='square-btn'>", unsafe_allow_html=True)
             fav_clicked = st.button(fav_label, key=f"fav_{safekey}", help="즐겨찾기 토글")
-            # Style: zero-gap & dynamic favorite style
             star_color = "#fb8c00" if fav_on else "#111111"
             star_bg    = "#fff3e0" if fav_on else "#ffffff"
             star_bd    = "#ffe0b2" if fav_on else "#cccccc"
-            st.markdown(
-                f"""<style>
-#{wrap_id} .stButton:nth-child(1) > button {{
-  color:#111 !important; background:#fff !important; border:1px solid #ccc !important;
-}}
-#{wrap_id} .stButton:nth-child(2) > button {{
-  color:{star_color} !important; background:{star_bg} !important; border:1px solid {star_bd} !important;
-}}
-</style>""", unsafe_allow_html=True
-            )
+            st.markdown(f"""<style>
+#{fav_wrap} > button {{ color:{star_color} !important; background:{star_bg} !important; border:1px solid {star_bd} !important; }}
+#{del_wrap} > button {{ color:#111 !important; background:#fff !important; border:1px solid #ccc !important; }}
+</style>""", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
+        # Actions
         if del_clicked:
             st.session_state.courses = [c for c in st.session_state.courses if not (c['subject'] == r['subject'] and c['cls'] == r['cls'])]
             st.session_state.data.pop((r['subject'], r['cls']), None)
@@ -313,12 +316,16 @@ def render():
                 st.session_state.favorites.add(k)
             if rerun: rerun()
 
-        with col[1]:
+        # Info
+        with col[2]:
+            info_id = f"info_{safekey}"
+            st.markdown(f"<div id='{info_id}' style='margin-left:8px'>", unsafe_allow_html=True)
             status = "만석" if r['current'] >= r['quota'] else "여석 있음"
             color = "#ff8a80" if r['current'] >= r['quota'] else "#81d4fa"
             st.markdown(f"<div class='course-title'>{r['title']}</div>", unsafe_allow_html=True)
             bar(r['current'], r['quota'], color)
             st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
+            st.markdown("</div>", unsafe_allow_html=True)
 
 render()
 
