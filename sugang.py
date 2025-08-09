@@ -277,7 +277,7 @@ def render():
             continue
 
         # Columns: [X][★][Info]
-        col = st.columns([1,1,8])
+        col = st.columns([2,8])
         k = (r['subject'], r['cls'])
         safekey = _safe_id(r['subject'], r['cls'])
 
