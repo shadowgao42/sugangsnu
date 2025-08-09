@@ -1,4 +1,3 @@
-
 import os, re, shutil, time, streamlit as st
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -90,13 +89,11 @@ def _goto_page(drv, page:int):
         old_html = tbody.get_attribute("innerHTML")
     except Exception:
         old_html = None
-
     direct_ok = True
     try:
         drv.execute_script("fnGotoPage(arguments[0]);", str(page))
     except Exception:
         direct_ok = False
-
     if not direct_ok:
         clicked = drv.execute_script(
             """
@@ -117,20 +114,9 @@ def _goto_page(drv, page:int):
         )
         if not clicked:
             raise RuntimeError("해당 페이지 링크를 찾지 못했습니다.")
-
     WebDriverWait(drv, TIMEOUT).until(
         EC.presence_of_element_located((By.CSS_SELECTOR,"table.tbl_basic tbody tr"))
     )
-    if old_html is not None:
-        t0 = time.time()
-        while time.time() - t0 < TIMEOUT:
-            try:
-                new_html = drv.find_element(By.CSS_SELECTOR, "table.tbl_basic tbody").get_attribute("innerHTML")
-                if new_html != old_html:
-                    break
-            except Exception:
-                pass
-            time.sleep(0.1)
 
 def read_info(drv, cls:str):
     found = _scan_current_page(drv, cls)
@@ -194,9 +180,7 @@ with st.sidebar:
     st.session_state.headless = st.checkbox("Headless 모드", st.session_state.headless)
     sort_ratio = st.checkbox("채워진 비율 순 배열", True)
 
-def _safe_id(*parts):
-    s = "_".join(str(p) for p in parts)
-    return re.sub(r"[^0-9a-zA-Z_-]+","_",s)
+def _safe_id(*parts): return re.sub(r"[^0-9a-zA-Z_-]+","_","_".join(str(p) for p in parts))
 
 if add:
     s,c=subj.strip(),cls.strip()
@@ -211,94 +195,63 @@ if add:
 ar = getattr(st,"autorefresh",None) or getattr(st,"st_autorefresh",None)
 if auto and ar: ar(interval=interval*1000, key=auto_key)
 
-FIXED_BAR_PX = 520
-def bar(curr:int, quota:int, color:str):
+FIXED_BAR_PX=520
+def bar(curr,quota,color):
     pct = curr/quota*100 if quota else 0
-    st.markdown(f"""
-    <div class='bar-track' style='--bar-width:{FIXED_BAR_PX}px'>
-      <div class='bar-fill' style='width:{pct:.2f}%; background:{color}'></div>
-      <div class='bar-center'>{curr}/{quota}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f"<div class='bar-track' style='--bar-width:{FIXED_BAR_PX}px'><div class='bar-fill' style='width:{pct:.2f}%;background:{color}'></div><div class='bar-center'>{curr}/{quota}</div></div>", unsafe_allow_html=True)
 
 def render():
     if not st.session_state.courses:
-        st.info("사이드바에서 과목을 등록하세요.")
-        return
-
+        st.info("사이드바에서 과목을 등록하세요."); return
     items=[]
     for i,c in enumerate(st.session_state.courses):
-        k=(c["subject"],c["cls"])
-        items.append((i, st.session_state.data.get(k)))
-
+        k=(c["subject"],c["cls"]); items.append((i, st.session_state.data.get(k)))
     favs=st.session_state.favorites
     def sort_key(item):
         i,r=item
         if r is None: return (1,0,i)
         fav_flag=0 if (r['subject'],r['cls']) in favs else 1
-        ratio=r.get("ratio",0)
-        ratio_key=-ratio if sort_ratio else 0
+        ratio=r.get("ratio",0); ratio_key=-ratio if sort_ratio else 0
         return (fav_flag, ratio_key, i)
     items.sort(key=sort_key)
-
     for i,r in items:
-        if r is None:
-            st.info("데이터 로딩 중...")
-            continue
-
-        col = st.columns([2,8])
-        k=(r['subject'], r['cls'])
-        safekey=_safe_id(r['subject'], r['cls'])
-        fav_on = k in st.session_state.favorites
-
+        if r is None: st.info("데이터 로딩 중..."); continue
+        k=(r['subject'],r['cls']); safekey=_safe_id(*k); fav_on=k in st.session_state.favorites
+        col=st.columns([2,8])
         with col[0]:
-            wrap=f"controls_{safekey}"
-            st.markdown(f"<div id='{wrap}'></div>", unsafe_allow_html=True)
+            marker=f"m_{safekey}"
+            st.markdown(f"<span id='{marker}'></span>", unsafe_allow_html=True)
+            del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
+            fav_clicked = st.button("★" if fav_on else "☆", key=f"fav_{safekey}", help="즐겨찾기")
             st.markdown(f"""
 <style>
-/* Only the nested control row right after #wrap */
-#{wrap} ~ div[data-testid="stHorizontalBlock"] {{
-  display:flex !important;
-  gap:0 !important;
-  flex-wrap:nowrap !important;
-  align-items:center !important;
+#{marker} ~ div.stButton, #{marker} ~ div.stButton + div.stButton {{
+  display:inline-flex !important;
+  margin:0 !important;
+  vertical-align:middle !important;
 }}
-#{wrap} ~ div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
-  flex:0 0 auto !important;
-  width:auto !important;
-  padding:0 !important;
-}}
-#{wrap} ~ div[data-testid="stHorizontalBlock"] button {{
+#{marker} ~ div.stButton > button, #{marker} ~ div.stButton + div.stButton > button {{
   width:36px !important; height:36px !important; padding:0 !important;
   border-radius:8px !important; font-size:18px !important; line-height:1 !important;
-  margin:0 !important;
 }}
-</style>
-""", unsafe_allow_html=True)
-            c1,c2=st.columns([1,1])
-            with c1:
-                del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
-            with c2:
-                fav_clicked = st.button("★" if fav_on else "☆", key=f"fav_{safekey}", help="즐겨찾기")
-                st.markdown(f"""
-<style>
-#{wrap} ~ div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) button {{
+#{marker} ~ div.stButton > button {{
   color:#111 !important; background:#fff !important; border:1px solid #ccc !important;
 }}
-#{wrap} ~ div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) button {{
-  color:{'#fb8c00' if fav_on else '#111111'} !important;
-  background:{'#fff3e0' if fav_on else '#ffffff'} !important;
-  border:1px solid {'#ffe0b2' if fav_on else '#cccccc'} !important;
+#{marker} ~ div.stButton + div.stButton > button {{
+  color:{'#fb8c00' if fav_on else '#111'} !important;
+  background:{'#fff3e0' if fav_on else '#fff'} !important;
+  border:1px solid {'#ffe0b2' if fav_on else '#ccc'} !important;
 }}
 </style>
 """, unsafe_allow_html=True)
 
+        # Actions
         if del_clicked:
             st.session_state.courses=[c for c in st.session_state.courses if not (c['subject']==r['subject'] and c['cls']==r['cls'])]
             st.session_state.data.pop((r['subject'], r['cls']), None)
-            st.session_state.favorites.discard(k)
+            st.session_state.favorites.discard(k); 
             if rerun: rerun()
-        if 'fav_clicked' in locals() and fav_clicked:
+        if fav_clicked:
             if fav_on: st.session_state.favorites.discard(k)
             else: st.session_state.favorites.add(k)
             if rerun: rerun()
