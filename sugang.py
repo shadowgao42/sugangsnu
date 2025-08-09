@@ -9,8 +9,7 @@ DEFAULT_YEAR = 2025
 DEFAULT_SEM  = 3
 SEM_VALUE = {1: "U000200001U000300001", 2: "U000200001U000300002", 3: "U000200002U000300001", 4: "U000200002U000300002"}
 SEM_NAME  = {1: "1학기", 2: "여름학기", 3: "2학기", 4: "겨울학기"}
-TITLE_COL, CAP_COL, CURR_COL, PROF_COL = 6, 13, 14, 11
-TIME_COL = 8 
+TITLE_COL, CAP_COL, CURR_COL, PROF_COL, TIME_COL = 6, 13, 14, 11, 8
 TIMEOUT = 10
 MAX_PAGES_TO_TRY = 20  # 안전장치: 최대 20페이지까지 시도
 
@@ -47,7 +46,7 @@ def _format_time_caption(cell_text: str) -> str:
     s = cell_text.replace("\xa0", " ").strip()
 
     # '요일(시작~끝)' 패턴 추출
-    matches = re.findall(r"([월화수목금토일])\s*[\(（]\s*(\d{2}:\d{2})\s*~\s*(\d{2}:\d{2})\s*[\)）]", s)
+    matches = re.findall(r"([월화수목금토일])\s*[\(（]\s*(\d{2}:\d{2})\s*~\s*(\d{2}:\d{2})\s*[\)）]", s, flags=re.DOTALL)
     if not matches:
         return ""
 
@@ -85,12 +84,15 @@ def open_search(drv, subj:str):
         """, str(DEFAULT_YEAR), SEM_VALUE[DEFAULT_SEM], subj.strip()
     )
 
+
 def _scan_current_page(drv, cls:str):
     WebDriverWait(drv,TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR,"table.tbl_basic tbody tr")))
-    for tr in drv.find_elements(By.CSS_SELECTOR,"table.tbl_basic tbody tr"):
+    rows = drv.find_elements(By.CSS_SELECTOR,"table.tbl_basic tbody tr")
+    for i, tr in enumerate(rows):
         tds = tr.find_elements(By.TAG_NAME,"td")
-        if len(tds)<=CURR_COL: 
+        if len(tds)<=CURR_COL:
             continue
+        # 매치되는 '분반' 행(강좌번호가 있는 첫 행)을 찾는다
         if any(td.text.strip()==cls for td in tds):
             cap = tds[CAP_COL].text
             m = re.search(r"\((\d+)\)", cap)
@@ -98,9 +100,29 @@ def _scan_current_page(drv, cls:str):
             current = _int(tds[CURR_COL].text)
             title = tds[TITLE_COL].text.strip()
             prof  = tds[PROF_COL].text.strip()
-            time_caption = _format_time_caption(tds[TIME_COL].text)
+            # 시간: 현재 행 + 뒤에 이어지는 '연속 행(제목 비어있음)'의 시간까지 수집
+            time_texts = []
+            if len(tds)>TIME_COL:
+                time_texts.append(tds[TIME_COL].text)
+            # 다음 행들에서 TITLE_COL이 비어 있으면 같은 과목 블록으로 간주
+            j = i + 1
+            while j < len(rows):
+                tds2 = rows[j].find_elements(By.TAG_NAME,"td")
+                if len(tds2)<=TIME_COL:
+                    break
+                title2 = tds2[TITLE_COL].text.strip()
+                # 새 과목 블록 시작이면 중단
+                if title2:
+                    break
+                # 같은 블록이면 시간 칸만 추가(비어있으면 무시)
+                ttxt = tds2[TIME_COL].text.strip()
+                if ttxt:
+                    time_texts.append(ttxt)
+                j += 1
+            time_caption = _format_time_caption(" ".join(time_texts))
             return quota,current,title,prof,time_caption
     return None
+
 
 def _goto_page(drv, page:int):
     # 페이지 전환: 기존 첫 행을 기억해두고 변경될 때까지 대기
