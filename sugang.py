@@ -5,6 +5,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+# ================= Config =================
 DEFAULT_YEAR = 2025
 DEFAULT_SEM  = 3
 SEM_VALUE = {1: "U000200001U000300001", 2: "U000200001U000300002", 3: "U000200002U000300001", 4: "U000200002U000300002"}
@@ -20,6 +21,7 @@ CHROMEDRIVER = [
     shutil.which("chromedriver"),
 ]
 
+# ================ Driver ==================
 def driver(headless=True):
     path = next((p for p in CHROMEDRIVER if p and os.path.exists(p)), None)
     if not path:
@@ -89,11 +91,13 @@ def _goto_page(drv, page:int):
         old_html = tbody.get_attribute("innerHTML")
     except Exception:
         old_html = None
+
     direct_ok = True
     try:
         drv.execute_script("fnGotoPage(arguments[0]);", str(page))
     except Exception:
         direct_ok = False
+
     if not direct_ok:
         clicked = drv.execute_script(
             """
@@ -114,6 +118,7 @@ def _goto_page(drv, page:int):
         )
         if not clicked:
             raise RuntimeError("해당 페이지 링크를 찾지 못했습니다.")
+
     WebDriverWait(drv, TIMEOUT).until(
         EC.presence_of_element_located((By.CSS_SELECTOR,"table.tbl_basic tbody tr"))
     )
@@ -145,9 +150,15 @@ def fetch(subj:str, cls:str, headless:bool):
         drv.quit()
     if quota is None:
         return {"subject":subj,"cls":cls,"error":"행을 찾지 못했습니다."}
-    return {"subject":subj,"cls":cls,"quota":quota,"current":current,"title":title,"prof":prof,"ratio": current/quota if quota else 0}
+    return {
+        "subject":subj,"cls":cls,"quota":quota,"current":current,
+        "title":title,"prof":prof,"ratio": current/quota if quota else 0
+    }
 
+# ================= UI ==================
 st.set_page_config(page_title="SNU 수강신청 실시간 모니터", layout="wide")
+
+# CSS for bars
 st.markdown("""
 <style>
 .bar-track { width: var(--bar-width, 520px); position:relative; height:24px; background:#eee; border-radius:8px; overflow:hidden; }
@@ -158,6 +169,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# session state
 if "courses" not in st.session_state: st.session_state.courses=[]
 if "data" not in st.session_state: st.session_state.data={}
 if "pending" not in st.session_state: st.session_state.pending=[]
@@ -180,10 +192,13 @@ with st.sidebar:
     st.session_state.headless = st.checkbox("Headless 모드", st.session_state.headless)
     sort_ratio = st.checkbox("채워진 비율 순 배열", True)
 
-def _safe_id(*parts): return re.sub(r"[^0-9a-zA-Z_-]+","_","_".join(str(p) for p in parts))
+def _safe_id(*parts):
+    s = "_".join(str(p) for p in parts)
+    return re.sub(r"[^0-9a-zA-Z_-]+","_",s)
 
+# queue fetch rather than blocking
 if add:
-    s,c=subj.strip(),cls.strip()
+    s, c = subj.strip(), cls.strip()
     if not s or not c:
         st.warning("과목코드·분반을 모두 입력하세요.")
     elif any(x["subject"]==s and x["cls"]==c for x in st.session_state.courses) or (s,c) in st.session_state.pending:
@@ -192,20 +207,31 @@ if add:
         st.session_state.pending.append((s,c))
         (getattr(st,"toast",None) or st.info)(f"{s}-{c} 데이터 로딩 시작")
 
+# autorefresh
 ar = getattr(st,"autorefresh",None) or getattr(st,"st_autorefresh",None)
 if auto and ar: ar(interval=interval*1000, key=auto_key)
 
+# progress bar
 FIXED_BAR_PX=520
-def bar(curr,quota,color):
+def bar(curr:int, quota:int, color:str):
     pct = curr/quota*100 if quota else 0
-    st.markdown(f"<div class='bar-track' style='--bar-width:{FIXED_BAR_PX}px'><div class='bar-fill' style='width:{pct:.2f}%;background:{color}'></div><div class='bar-center'>{curr}/{quota}</div></div>", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class='bar-track' style='--bar-width:{FIXED_BAR_PX}px'>
+      <div class='bar-fill' style='width:{pct:.2f}%; background:{color}'></div>
+      <div class='bar-center'>{curr}/{quota}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 def render():
     if not st.session_state.courses:
         st.info("사이드바에서 과목을 등록하세요."); return
+
+    # Build (original_index, result) for stable sorting
     items=[]
     for i,c in enumerate(st.session_state.courses):
-        k=(c["subject"],c["cls"]); items.append((i, st.session_state.data.get(k)))
+        k=(c["subject"],c["cls"])
+        items.append((i, st.session_state.data.get(k)))
+
     favs=st.session_state.favorites
     def sort_key(item):
         i,r=item
@@ -214,52 +240,90 @@ def render():
         ratio=r.get("ratio",0); ratio_key=-ratio if sort_ratio else 0
         return (fav_flag, ratio_key, i)
     items.sort(key=sort_key)
+
     for i,r in items:
-        if r is None: st.info("데이터 로딩 중..."); continue
-        k=(r['subject'],r['cls']); safekey=_safe_id(*k); fav_on=k in st.session_state.favorites
-        col=st.columns([2,8])
+        if r is None:
+            st.info("데이터 로딩 중..."); continue
+
+        col = st.columns([2,8])
+        k=(r['subject'],r['cls'])
+        safekey=_safe_id(r['subject'], r['cls'])
+        fav_on = k in st.session_state.favorites
+
+        # -------- Controls in the SAME column, width/height constrained --------
         with col[0]:
-            key=f"rx_{safekey}"
-            choice = st.radio("", ["×", "★" if fav_on else "☆"], horizontal=True, key=key, index=None)
-            st.markdown("""
+            ctl_id = f"ctl_{safekey}"
+            st.markdown(f"<span id='{ctl_id}'></span>", unsafe_allow_html=True)
+            # CSS: the NEXT horizontal block (created by nested columns) is the control block
+            st.markdown(f"""
 <style>
-div[role="radiogroup"]{display:inline-flex !important; gap:0 !important;}
-div[role="radiogroup"] label{margin:0 !important}
-div[role="radiogroup"] input{display:none !important}
-div[role="radiogroup"] span{
-  display:inline-flex; align-items:center; justify-content:center;
-  width:36px; height:36px; border-radius:8px; font-size:18px;
-  border:1px solid #ccc; background:#fff; color:#111;
-}
+/* limit the nested control block to 76x36, keep items inline, no gap, no wrap */
+#{ctl_id} + div[data-testid="stHorizontalBlock"] {{
+  display:flex !important;
+  gap:0 !important;
+  flex-wrap:nowrap !important;
+  align-items:center !important;
+  width:76px !important; min-width:76px !important;
+  height:36px !important; min-height:36px !important;
+  overflow:hidden !important;
+}}
+#{ctl_id} + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
+  padding-left:0 !important; padding-right:0 !important;
+  flex:0 0 auto !important; width:auto !important;
+}}
+#{ctl_id} + div[data-testid="stHorizontalBlock"] button {{
+  width:36px !important; height:36px !important; padding:0 !important; margin:0 !important;
+  border-radius:8px !important; font-size:18px !important; line-height:1 !important;
+}}
+/* Colors: left (X) and right (☆/★) */
+#{ctl_id} + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) button {{
+  color:#111 !important; background:#fff !important; border:1px solid #ccc !important;
+}}
+#{ctl_id} + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) button {{
+  color:{'#fb8c00' if fav_on else '#111111'} !important;
+  background:{'#fff3e0' if fav_on else '#ffffff'} !important;
+  border:1px solid {'#ffe0b2' if fav_on else '#cccccc'} !important;
+}}
 </style>
 """, unsafe_allow_html=True)
-        if choice == "×":
+
+            # nested columns hold the two buttons; they will be styled/limited by CSS above
+            b1, b2 = st.columns([1,1])
+            with b1:
+                del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
+            with b2:
+                fav_clicked = st.button("★" if fav_on else "☆", key=f"fav_{safekey}", help="즐겨찾기")
+
+        # Actions
+        if del_clicked:
             st.session_state.courses=[c for c in st.session_state.courses if not (c['subject']==r['subject'] and c['cls']==r['cls'])]
             st.session_state.data.pop((r['subject'], r['cls']), None)
-            st.session_state.favorites.discard(k); 
+            st.session_state.favorites.discard(k)
             if rerun: rerun()
-        elif choice in ("☆","★"):
+        if fav_clicked:
             if fav_on: st.session_state.favorites.discard(k)
             else: st.session_state.favorites.add(k)
             if rerun: rerun()
 
+        # -------- Info --------
         with col[1]:
-            status="만석" if r['current']>=r['quota'] else "여석 있음"
-            color="#ff8a80" if r['current']>=r['quota'] else "#81d4fa"
+            status = "만석" if r['current']>=r['quota'] else "여석 있음"
+            color  = "#ff8a80" if r['current']>=r['quota'] else "#81d4fa"
             st.markdown(f"<div class='course-title'>{r['title']}</div>", unsafe_allow_html=True)
             bar(r['current'], r['quota'], color)
             st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
 
 render()
 
+# after render, handle pending and refresh
 if st.session_state.pending:
-    subj,cls=st.session_state.pending.pop(0)
-    d=fetch(subj,cls,st.session_state.headless)
-    st.session_state.data[(subj,cls)]=d
+    subj,cls = st.session_state.pending.pop(0)
+    d = fetch(subj,cls,st.session_state.headless)
+    st.session_state.data[(subj,cls)] = d
     st.session_state.courses.append({"subject":subj,"cls":cls})
     if rerun: rerun()
 elif 'refresh_clicked' in locals() and (refresh_clicked or auto):
     for c in st.session_state.courses:
         k=(c["subject"],c["cls"])
-        st.session_state.data[k]=fetch(*k, st.session_state.headless)
+        st.session_state.data[k] = fetch(*k, st.session_state.headless)
     if rerun: rerun()
