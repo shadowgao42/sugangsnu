@@ -1,5 +1,4 @@
-
-import os, re, shutil, streamlit as st
+import os, re, shutil, time, streamlit as st
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -12,6 +11,7 @@ SEM_VALUE = {1: "U000200001U000300001", 2: "U000200001U000300002", 3: "U00020000
 SEM_NAME  = {1: "1학기", 2: "여름학기", 3: "2학기", 4: "겨울학기"}
 TITLE_COL, CAP_COL, CURR_COL, PROF_COL = 6, 13, 14, 11
 TIMEOUT = 10
+MAX_PAGES_TO_TRY = 20  # 안전장치: 최대 20페이지까지 시도
 
 CHROMEDRIVER = [
     "/usr/bin/chromedriver",
@@ -48,11 +48,12 @@ def open_search(drv, subj:str):
         """, str(DEFAULT_YEAR), SEM_VALUE[DEFAULT_SEM], subj.strip()
     )
 
-def read_info(drv, cls:str):
+def _scan_current_page(drv, cls:str):
     WebDriverWait(drv,TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR,"table.tbl_basic tbody tr")))
     for tr in drv.find_elements(By.CSS_SELECTOR,"table.tbl_basic tbody tr"):
         tds = tr.find_elements(By.TAG_NAME,"td")
-        if len(tds)<=CURR_COL: continue
+        if len(tds)<=CURR_COL: 
+            continue
         if any(td.text.strip()==cls for td in tds):
             cap = tds[CAP_COL].text
             m = re.search(r"\((\d+)\)", cap)
@@ -61,7 +62,48 @@ def read_info(drv, cls:str):
             title = tds[TITLE_COL].text.strip()
             prof  = tds[PROF_COL].text.strip()
             return quota,current,title,prof
-    return None,None,None,None
+    return None
+
+def _goto_page(drv, page:int):
+    # 페이지 전환: 기존 첫 행을 기억해두고 변경될 때까지 대기
+    try:
+        tbody = WebDriverWait(drv, TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.tbl_basic tbody")))
+        old_html = tbody.get_attribute("innerHTML")
+    except Exception:
+        old_html = None
+    # 페이지 이동 (예: javascript:fnGotoPage(2);)
+    drv.execute_script("fnGotoPage(arguments[0]);", page)
+    # DOM 업데이트 대기
+    WebDriverWait(drv, TIMEOUT).until(EC.presence_of_element_located((By.CSS_SELECTOR,"table.tbl_basic tbody tr")))
+    if old_html is not None:
+        # 내용이 바뀔 때까지 잠깐 대기 (최대 TIMEOUT초)
+        t0 = time.time()
+        while time.time() - t0 < TIMEOUT:
+            try:
+                new_html = drv.find_element(By.CSS_SELECTOR, "table.tbl_basic tbody").get_attribute("innerHTML")
+                if new_html != old_html:
+                    break
+            except Exception:
+                pass
+            time.sleep(0.1)
+
+def read_info(drv, cls:str):
+    # 1페이지 검색
+    found = _scan_current_page(drv, cls)
+    if found:
+        return found
+
+    # 페이지네이션: 2페이지부터 MAX_PAGES_TO_TRY까지 순차 탐색
+    for p in range(2, MAX_PAGES_TO_TRY + 1):
+        try:
+            _goto_page(drv, p)
+        except Exception:
+            # 더 이상 페이지가 없거나 이동 실패 시 중단
+            break
+        found = _scan_current_page(drv, cls)
+        if found:
+            return found
+    return None, None, None, None
 
 def fetch(subj:str, cls:str, headless:bool):
     drv = driver(headless)
@@ -76,15 +118,25 @@ def fetch(subj:str, cls:str, headless:bool):
         return {"subject":subj,"cls":cls,"error":"행을 찾지 못했습니다."}
     return {"subject":subj,"cls":cls,"quota":quota,"current":current,"title":title,"prof":prof,"ratio":current/quota if quota else 0}
 
+# --- UI 부분 ---
+# 1) 고정폭(반응형) 막대: 제목 길이에 무관하게 모든 항목 동일 너비를 사용
+#   - clamp(360px, 48vw, 640px)로 화면 너비에 맞춰 적당히 반응
+#   - 제목은 우측으로 따로 배치하여 잘리지 않도록 함
 def bar(t:str,curr:int,quota:int):
     pct = curr/quota*100 if quota else 0
     color = "#e53935" if curr>=quota else "#1e88e5"
     st.markdown(
-        "<div style='display:flex;align-items:center;gap:12px'>"
-        "<div style='flex:1;position:relative;height:24px;background:#eee;border-radius:8px;overflow:hidden'>"
-        f"<div style='position:absolute;top:0;left:0;bottom:0;width:{pct:.2f}%;background:{color}'></div>"
-        "</div><span style='font-weight:600;white-space:nowrap'>"
-        f"{t} ({curr}/{quota})</span></div>",
+        """
+        <div style='display:flex;align-items:center;gap:12px; width:100%;'>
+            <div style='width:clamp(360px, 48vw, 640px); position:relative; height:24px; background:#eee; border-radius:8px; overflow:hidden; flex:0 0 auto;'>
+                <div style='position:absolute; top:0; left:0; bottom:0; width:{pct:.2f}%; background:{color};'></div>
+                <div style='position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:13px;'>
+                    {curr}/{quota}
+                </div>
+            </div>
+            <div style='flex:1 1 auto; min-width:120px; font-weight:600; overflow-wrap:anywhere;'>{t}</div>
+        </div>
+        """.format(pct=pct, color=color, curr=curr, quota=quota, t=t),
         unsafe_allow_html=True
     )
 
