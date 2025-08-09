@@ -245,54 +245,32 @@ def render():
         if r is None:
             st.info("데이터 로딩 중...")
             continue
-
         col = st.columns([2,8])
         k=(r['subject'], r['cls'])
         safekey=_safe_id(r['subject'], r['cls'])
         fav_on = k in st.session_state.favorites
-
         with col[0]:
-            wrap=f"controls_{safekey}"
-            st.markdown(f"<div id='{wrap}'></div>", unsafe_allow_html=True)
+            box=f"box_{safekey}"
+            st.markdown(f"<div id='{box}' style='position:relative;height:36px'></div>", unsafe_allow_html=True)
+            del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
+            fav_clicked = st.button("★" if fav_on else "☆", key=f"fav_{safekey}", help="즐겨찾기")
             st.markdown(f"""
 <style>
-/* Only the nested control row right after #wrap */
-#{wrap} ~ div[data-testid="stHorizontalBlock"] {{
-  display:flex !important;
-  gap:0 !important;
-  flex-wrap:nowrap !important;
-  align-items:center !important;
-}}
-#{wrap} ~ div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
-  flex:0 0 auto !important;
-  width:auto !important;
-  padding:0 !important;
-}}
-#{wrap} ~ div[data-testid="stHorizontalBlock"] button {{
-  width:36px !important; height:36px !important; padding:0 !important;
-  border-radius:8px !important; font-size:18px !important; line-height:1 !important;
-  margin:0 !important;
-}}
-</style>
-""", unsafe_allow_html=True)
-            c1,c2=st.columns([1,1])
-            with c1:
-                del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
-            with c2:
-                fav_clicked = st.button("★" if fav_on else "☆", key=f"fav_{safekey}", help="즐겨찾기")
-                st.markdown(f"""
-<style>
-#{wrap} ~ div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) button {{
+#{box} + div.stButton > button {{
+  width:36px !important; height:36px !important; border-radius:8px !important; padding:0 !important;
   color:#111 !important; background:#fff !important; border:1px solid #ccc !important;
 }}
-#{wrap} ~ div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) button {{
+#{box} + div.stButton + div.stButton {{
+  position:relative !important; top:-36px !important; left:40px !important;
+}}
+#{box} + div.stButton + div.stButton > button {{
+  width:36px !important; height:36px !important; border-radius:8px !important; padding:0 !important;
   color:{'#fb8c00' if fav_on else '#111111'} !important;
   background:{'#fff3e0' if fav_on else '#ffffff'} !important;
   border:1px solid {'#ffe0b2' if fav_on else '#cccccc'} !important;
 }}
 </style>
 """, unsafe_allow_html=True)
-
         if del_clicked:
             st.session_state.courses=[c for c in st.session_state.courses if not (c['subject']==r['subject'] and c['cls']==r['cls'])]
             st.session_state.data.pop((r['subject'], r['cls']), None)
