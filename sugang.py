@@ -176,7 +176,7 @@ with st.sidebar:
     refresh_clicked = st.button("🔄 수동 새로고침", use_container_width=True)
 
     auto = st.checkbox("자동 새로고침(과목 등록 시 해제 권장)", False)
-    interval = st.slider("새로고침(초)",1,10,5)
+    interval = st.slider("새로고침(초)",10,20,10)
     st.session_state.headless = st.checkbox("Headless 모드", st.session_state.headless)
     sort_ratio = st.checkbox("채워진 비율 순 배열", True)
 
