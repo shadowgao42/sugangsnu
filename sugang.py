@@ -219,22 +219,22 @@ def render():
         k=(r['subject'],r['cls']); safekey=_safe_id(*k); fav_on=k in st.session_state.favorites
         col=st.columns([2,8])
         with col[0]:
-            marker=f"m_{safekey}"
-            st.markdown(f"<span id='{marker}'></span>", unsafe_allow_html=True)
+            box=f"box_{safekey}"
+            st.markdown(f"<div id='{box}' style='position:relative;height:36px'></div>", unsafe_allow_html=True)
             del_clicked = st.button("×", key=f"del_{safekey}", help="삭제")
             fav_clicked = st.button("★" if fav_on else "☆", key=f"fav_{safekey}", help="즐겨찾기")
             st.markdown(f"""
 <style>
-#{marker} ~ div.stButton, #{marker} ~ div.stButton + div.stButton {{
+#{box} + div.stButton, #{box} + div.stButton + div.stButton {{
   display:inline-flex !important;
   margin:0 !important;
   vertical-align:middle !important;
 }}
-#{marker} ~ div.stButton > button, #{marker} ~ div.stButton + div.stButton > button {{
+#{box} + div.stButton > button, #{box} + div.stButton + div.stButton > button {{
   width:36px !important; height:36px !important; padding:0 !important;
   border-radius:8px !important; font-size:18px !important; line-height:1 !important;
 }}
-#{marker} ~ div.stButton > button {{
+#{box} + div.stButton > button {{
   color:#111 !important; background:#fff !important; border:1px solid #ccc !important;
 }}
 #{marker} ~ div.stButton + div.stButton > button {{
@@ -242,6 +242,7 @@ def render():
   background:{'#fff3e0' if fav_on else '#fff'} !important;
   border:1px solid {'#ffe0b2' if fav_on else '#ccc'} !important;
 }}
+#{box} + div.stButton + div.stButton { position:relative !important; top:-36px !important; left:42px !important; }
 </style>
 """, unsafe_allow_html=True)
 
