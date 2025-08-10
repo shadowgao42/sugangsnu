@@ -285,7 +285,7 @@ def render():
 
                        
                 status = "만석" if r['current']>=r['quota'] else "여석있음"
-                st.caption(f"상태: {status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
+                st.caption(f"{status} | 비율: {r['ratio']*100:.0f}% | 분반: {r['cls']:0>3} | 교수: {r['prof']}")
 
 render()
 
