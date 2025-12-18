@@ -5,8 +5,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-DEFAULT_YEAR = 2025
-DEFAULT_SEM  = 4
+DEFAULT_YEAR = 2026
+DEFAULT_SEM  = 1
 SEM_VALUE = {1: "U000200001U000300001", 2: "U000200001U000300002", 3: "U000200002U000300001", 4: "U000200002U000300002"}
 SEM_NAME  = {1: "1학기", 2: "여름학기", 3: "2학기", 4: "겨울학기"}
 TITLE_COL, CAP_COL, CURR_COL, PROF_COL, TIME_COL = 6, 13, 14, 11, 8
